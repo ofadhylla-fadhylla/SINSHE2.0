@@ -7,6 +7,7 @@ import {
   AlertTriangle, CheckCircle2, ClipboardCheck, Download, Eye, FileText,
   Filter, ListChecks, Plus, Search, ShieldCheck, X, XCircle
 } from 'lucide-react'
+import { COMPANY_MASTER } from '../../lib/company-master'
 import styles from './inspection.module.css'
 
 const defaultInspections = [
@@ -31,7 +32,7 @@ const riskLevels = ['Low', 'Medium', 'High', 'Critical']
 const statuses = ['Open', 'In Progress', 'Investigation', 'Closed']
 
 const emptyForm = {
-  date: '2026-09-15', type: 'Unsafe Action', description: '', unit: 'PKS A', location: '', risk: 'Medium',
+  companyCode: 'ACP', date: '2026-09-15', type: 'Unsafe Action', description: '', unit: 'PKS A', location: '', risk: 'Medium',
   status: 'Open', pic: '', dueDate: '', action: '', evidence: ''
 }
 
@@ -55,6 +56,7 @@ export default function Inspection() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [search, setSearch] = useState('')
+  const [filterCompany, setFilterCompany] = useState('All')
   const [filterType, setFilterType] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
   const [filterUnit, setFilterUnit] = useState('All')
@@ -64,37 +66,32 @@ export default function Inspection() {
     try {
       const saved = localStorage.getItem('sinshe-observations')
       if (saved) setObservations(JSON.parse(saved))
-    } catch {
-      // Tetap gunakan data awal jika browser menolak localStorage.
-    }
+    } catch {}
   }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem('sinshe-observations', JSON.stringify(observations))
-    } catch {
-      // Data tetap tersedia selama sesi berjalan.
-    }
+    try { localStorage.setItem('sinshe-observations', JSON.stringify(observations)) } catch {}
   }, [observations])
 
-  const filtered = useMemo(() => observations.filter(item => {
+  const companyScoped = useMemo(() => filterCompany === 'All' ? observations : observations.filter(item => item.companyCode === filterCompany), [observations, filterCompany])
+  const filtered = useMemo(() => companyScoped.filter(item => {
     const q = search.trim().toLowerCase()
-    const matchSearch = !q || [item.id, item.description, item.unit, item.location, item.pic].join(' ').toLowerCase().includes(q)
-    const matchType = filterType === 'All' || item.type === filterType
-    const matchStatus = filterStatus === 'All' || item.status === filterStatus
-    const matchUnit = filterUnit === 'All' || item.unit === filterUnit
-    return matchSearch && matchType && matchStatus && matchUnit
-  }), [observations, search, filterType, filterStatus, filterUnit])
+    const matchSearch = !q || [item.id, item.companyCode, item.description, item.unit, item.location, item.pic].join(' ').toLowerCase().includes(q)
+    return matchSearch &&
+      (filterType === 'All' || item.type === filterType) &&
+      (filterStatus === 'All' || item.status === filterStatus) &&
+      (filterUnit === 'All' || item.unit === filterUnit)
+  }), [companyScoped, search, filterType, filterStatus, filterUnit])
 
-  const openFindings = observations.filter(o => o.status !== 'Closed').length
-  const closedFindings = observations.filter(o => o.status === 'Closed').length
-  const closureRate = observations.length ? Math.round((closedFindings / observations.length) * 100) : 0
-  const highRisk = observations.filter(o => ['High', 'Critical'].includes(o.risk) && o.status !== 'Closed').length
+  const openFindings = companyScoped.filter(o => o.status !== 'Closed').length
+  const closedFindings = companyScoped.filter(o => o.status === 'Closed').length
+  const closureRate = companyScoped.length ? Math.round((closedFindings / companyScoped.length) * 100) : 0
+  const highRisk = companyScoped.filter(o => ['High', 'Critical'].includes(o.risk) && o.status !== 'Closed').length
 
   const findingBars = [
-    { label: 'Open', value: observations.filter(o => o.status === 'Open').length, tone: 'red' },
-    { label: 'In Progress', value: observations.filter(o => o.status === 'In Progress').length, tone: 'orange' },
-    { label: 'Investigation', value: observations.filter(o => o.status === 'Investigation').length, tone: 'blue' },
+    { label: 'Open', value: companyScoped.filter(o => o.status === 'Open').length, tone: 'red' },
+    { label: 'In Progress', value: companyScoped.filter(o => o.status === 'In Progress').length, tone: 'orange' },
+    { label: 'Investigation', value: companyScoped.filter(o => o.status === 'Investigation').length, tone: 'blue' },
     { label: 'Closed', value: Math.max(closedFindings, 1), tone: 'green' },
   ]
 
@@ -104,15 +101,16 @@ export default function Inspection() {
 
   function saveObservation(e) {
     e.preventDefault()
-    if (!form.description.trim() || !form.location.trim() || !form.pic.trim() || !form.dueDate) {
-      setNotice('Lengkapi deskripsi, lokasi, PIC dan due date sebelum menyimpan.')
+    if (!form.companyCode || !form.description.trim() || !form.location.trim() || !form.pic.trim() || !form.dueDate) {
+      setNotice('Pilih Company/PT dan lengkapi deskripsi, lokasi, PIC serta due date sebelum menyimpan.')
       return
     }
     const id = `OBS-${String(Date.now()).slice(-6)}`
     setObservations(prev => [{ id, ...form }, ...prev])
+    setFilterCompany(form.companyCode)
     setForm(emptyForm)
     setModalOpen(false)
-    setNotice('Observasi baru berhasil disimpan di browser ini.')
+    setNotice(`${id} berhasil disimpan dan ditandai ke PT ${form.companyCode}.`)
     setTimeout(() => setNotice(''), 3500)
   }
 
@@ -123,8 +121,8 @@ export default function Inspection() {
   }
 
   function exportCSV() {
-    const header = ['ID', 'Tanggal', 'Tipe', 'Deskripsi', 'Unit', 'Lokasi', 'Risiko', 'Status', 'PIC', 'Due Date', 'Tindakan']
-    const rows = filtered.map(o => [o.id, o.date, o.type, o.description, o.unit, o.location, o.risk, o.status, o.pic, o.dueDate, o.action])
+    const header = ['ID', 'Company/PT', 'Tanggal', 'Tipe', 'Deskripsi', 'Unit', 'Lokasi', 'Risiko', 'Status', 'PIC', 'Due Date', 'Tindakan']
+    const rows = filtered.map(o => [o.id, o.companyCode || '', o.date, o.type, o.description, o.unit, o.location, o.risk, o.status, o.pic, o.dueDate, o.action])
     const csv = [header, ...rows].map(row => row.map(value => `"${String(value || '').replaceAll('"', '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -140,16 +138,13 @@ export default function Inspection() {
 
     <div className="stats-grid four">
       <StatCard label="Inspeksi Bulan Ini" value={inspections.length} hint="jadwal September 2026" tone="blue" icon={<ClipboardCheck/>}/>
-      <StatCard label="Safety Observation" value={observations.length} hint={`${filtered.length} tampil setelah filter`} tone="green" icon={<Eye/>}/>
+      <StatCard label="Safety Observation" value={companyScoped.length} hint={`${filtered.length} tampil setelah filter`} tone="green" icon={<Eye/>}/>
       <StatCard label="Temuan Terbuka" value={openFindings} hint={`${highRisk} high / critical risk`} tone="red" icon={<XCircle/>}/>
-      <StatCard label="Closure Rate" value={`${closureRate}%`} hint="berdasarkan data observasi" tone="purple" icon={<CheckCircle2/>}/>
+      <StatCard label="Closure Rate" value={`${closureRate}%`} hint={filterCompany === 'All' ? 'seluruh PT' : `PT ${filterCompany}`} tone="purple" icon={<CheckCircle2/>}/>
     </div>
 
     <div className={styles.actionBar}>
-      <div>
-        <h2>Safety Observation Register</h2>
-        <p>Catat unsafe action, unsafe condition, near miss dan positive act dari seluruh unit.</p>
-      </div>
+      <div><h2>Safety Observation Register</h2><p>Catat unsafe action, unsafe condition, near miss dan positive act per Company/PT.</p></div>
       <div className={styles.actionButtons}>
         <button className={styles.secondaryButton} onClick={exportCSV}><Download size={17}/> Export CSV</button>
         <button className={styles.primaryButton} onClick={() => { setNotice(''); setModalOpen(true) }}><Plus size={18}/> Observasi Baru</button>
@@ -158,32 +153,28 @@ export default function Inspection() {
 
     <Panel className={styles.registerPanel}>
       <div className={styles.filters}>
-        <label className={styles.searchInput}><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari ID, deskripsi, lokasi, PIC..."/></label>
+        <label className={styles.searchInput}><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari ID, PT, deskripsi, lokasi, PIC..."/></label>
+        <label><select value={filterCompany} onChange={e => setFilterCompany(e.target.value)}><option value="All">All Companies</option>{COMPANY_MASTER.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></label>
         <label><Filter size={15}/><select value={filterType} onChange={e => setFilterType(e.target.value)}><option>All</option>{observationTypes.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}><option>All</option>{statuses.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><select value={filterUnit} onChange={e => setFilterUnit(e.target.value)}><option>All</option>{units.map(v => <option key={v}>{v}</option>)}</select></label>
       </div>
 
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>ID</th><th>Tanggal</th><th>Tipe</th><th>Temuan / Observasi</th><th>Unit & Lokasi</th><th>Risiko</th><th>PIC</th><th>Due Date</th><th>Status</th><th>Aksi</th></tr></thead>
-          <tbody>
-            {filtered.map(o => <tr key={o.id}>
-              <td><b>{o.id}</b></td>
-              <td>{formatDate(o.date)}</td>
-              <td><Badge tone={badgeTone(o.type)}>{o.type}</Badge></td>
-              <td className={styles.descriptionCell}><b>{o.description}</b>{o.action && <small>Tindakan: {o.action}</small>}</td>
-              <td><b>{o.unit}</b><small className={styles.blockText}>{o.location}</small></td>
-              <td><Badge tone={badgeTone(o.risk)}>{o.risk}</Badge></td>
-              <td>{o.pic}</td>
-              <td>{formatDate(o.dueDate)}</td>
-              <td><Badge tone={badgeTone(o.status)}>{o.status}</Badge></td>
-              <td>{o.status !== 'Closed' ? <button className={styles.closeButton} onClick={() => closeObservation(o.id)}><ShieldCheck size={14}/> Close</button> : <span className={styles.closedText}><CheckCircle2 size={14}/> Done</span>}</td>
-            </tr>)}
-            {!filtered.length && <tr><td colSpan="10" className={styles.emptyState}>Tidak ada data yang sesuai dengan filter.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <div className="table-wrap"><table>
+        <thead><tr><th>ID</th><th>PT</th><th>Tanggal</th><th>Tipe</th><th>Temuan / Observasi</th><th>Unit & Lokasi</th><th>Risiko</th><th>PIC</th><th>Due Date</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>
+          {filtered.map(o => <tr key={o.id}>
+            <td><b>{o.id}</b></td><td><b>{o.companyCode || '-'}</b></td><td>{formatDate(o.date)}</td>
+            <td><Badge tone={badgeTone(o.type)}>{o.type}</Badge></td>
+            <td className={styles.descriptionCell}><b>{o.description}</b>{o.action && <small>Tindakan: {o.action}</small>}</td>
+            <td><b>{o.unit}</b><small className={styles.blockText}>{o.location}</small></td>
+            <td><Badge tone={badgeTone(o.risk)}>{o.risk}</Badge></td><td>{o.pic}</td><td>{formatDate(o.dueDate)}</td>
+            <td><Badge tone={badgeTone(o.status)}>{o.status}</Badge></td>
+            <td>{o.status !== 'Closed' ? <button className={styles.closeButton} onClick={() => closeObservation(o.id)}><ShieldCheck size={14}/> Close</button> : <span className={styles.closedText}><CheckCircle2 size={14}/> Done</span>}</td>
+          </tr>)}
+          {!filtered.length && <tr><td colSpan="11" className={styles.emptyState}>Tidak ada data yang sesuai dengan filter.</td></tr>}
+        </tbody>
+      </table></div>
     </Panel>
 
     <div className="dashboard-split mt">
@@ -197,27 +188,18 @@ export default function Inspection() {
         </table></div>
       </Panel>
 
-      <Panel title="Status Temuan">
-        <BarList data={findingBars}/>
-        <div className="ai-card" style={{marginTop:16}}>
-          <ListChecks/><div><b>Kontrol Tindak Lanjut</b><p>{openFindings} temuan masih aktif. Prioritaskan {highRisk} temuan dengan risiko High/Critical dan pastikan bukti penutupan terdokumentasi.</p></div>
-        </div>
-      </Panel>
+      <Panel title="Status Temuan"><BarList data={findingBars}/><div className="ai-card" style={{marginTop:16}}><ListChecks/><div><b>Kontrol Tindak Lanjut</b><p>{openFindings} temuan masih aktif. Prioritaskan {highRisk} temuan dengan risiko High/Critical dan pastikan bukti penutupan terdokumentasi.</p></div></div></Panel>
     </div>
 
-    <div className={styles.infoStrip}>
-      <FileText size={20}/><div><b>Tahap prototype operasional</b><span>Data observasi yang kamu tambah saat ini tersimpan di browser (localStorage). Tahap berikutnya adalah menghubungkannya ke database agar data dapat dipakai bersama oleh seluruh unit.</span></div>
-    </div>
+    <div className={styles.infoStrip}><FileText size={20}/><div><b>Company/PT scope aktif</b><span>Setiap observasi baru wajib memilih PT. Saat login production, Company/PT ikut tersinkron ke database pusat dan menjadi sumber filter Executive Dashboard.</span></div></div>
 
     {modalOpen && <div className={styles.modalBackdrop} onMouseDown={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
       <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Tambah observasi baru">
-        <div className={styles.modalHeader}>
-          <div><span>SINSHE 2.0</span><h2>Observasi Baru</h2><p>Input temuan lapangan dan rencana tindak lanjut.</p></div>
-          <button onClick={() => setModalOpen(false)} aria-label="Tutup"><X size={20}/></button>
-        </div>
+        <div className={styles.modalHeader}><div><span>SINSHE 2.0</span><h2>Observasi Baru</h2><p>Input temuan lapangan dan rencana tindak lanjut.</p></div><button onClick={() => setModalOpen(false)} aria-label="Tutup"><X size={20}/></button></div>
         <form onSubmit={saveObservation} className={styles.form}>
           {notice && <div className={styles.formError}><AlertTriangle size={16}/>{notice}</div>}
           <div className={styles.formGrid}>
+            <label>Company / PT<select value={form.companyCode} onChange={e => updateForm('companyCode', e.target.value)}>{COMPANY_MASTER.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></label>
             <label>Tanggal Observasi<input type="date" value={form.date} onChange={e => updateForm('date', e.target.value)}/></label>
             <label>Tipe Observasi<select value={form.type} onChange={e => updateForm('type', e.target.value)}>{observationTypes.map(v => <option key={v}>{v}</option>)}</select></label>
             <label>Unit<select value={form.unit} onChange={e => updateForm('unit', e.target.value)}>{units.map(v => <option key={v}>{v}</option>)}</select></label>
@@ -230,10 +212,7 @@ export default function Inspection() {
           <label>Deskripsi Observasi<textarea rows="3" value={form.description} onChange={e => updateForm('description', e.target.value)} placeholder="Jelaskan kondisi/perilaku yang ditemukan..."/></label>
           <label>Tindakan Segera / Corrective Action<textarea rows="2" value={form.action} onChange={e => updateForm('action', e.target.value)} placeholder="Apa tindakan awal yang sudah atau akan dilakukan?"/></label>
           <label>Evidence (sementara)<input type="file" accept="image/*,.pdf" onChange={e => updateForm('evidence', e.target.files?.[0]?.name || '')}/>{form.evidence && <small>File dipilih: {form.evidence}</small>}</label>
-          <div className={styles.formActions}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setModalOpen(false)}>Batal</button>
-            <button type="submit" className={styles.primaryButton}><CheckCircle2 size={17}/> Simpan Observasi</button>
-          </div>
+          <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setModalOpen(false)}>Batal</button><button type="submit" className={styles.primaryButton}><CheckCircle2 size={17}/> Simpan Observasi</button></div>
         </form>
       </div>
     </div>}

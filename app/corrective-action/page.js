@@ -7,6 +7,7 @@ import {
   AlertTriangle, CheckCircle2, Clock3, Download, Filter, ListChecks,
   PlayCircle, Plus, Search, ShieldCheck, Target, X
 } from 'lucide-react'
+import { COMPANY_MASTER } from '../../lib/company-master'
 import styles from './corrective-action.module.css'
 
 const defaultActions = [
@@ -24,7 +25,7 @@ const statuses = ['Open', 'In Progress', 'Overdue', 'Closed']
 const categories = ['Engineering Control', 'Administrative Control', 'Housekeeping', 'Procedure', 'Training', 'Compliance', 'Other']
 
 const emptyForm = {
-  source: 'Manual', sourceId: '', title: '', unit: 'PKS A', location: '', category: 'Administrative Control',
+  companyCode: 'ACP', source: 'Manual', sourceId: '', title: '', unit: 'PKS A', location: '', category: 'Administrative Control',
   priority: 'Medium', pic: '', dueDate: '', status: 'Open', progress: 0, evidence: ''
 }
 
@@ -43,8 +44,7 @@ const fmt = value => {
 
 function isOverdue(item) {
   if (!item.dueDate || item.status === 'Closed') return false
-  const end = new Date(`${item.dueDate}T23:59:59`)
-  return end < new Date()
+  return new Date(`${item.dueDate}T23:59:59`) < new Date()
 }
 
 function normalise(item) {
@@ -55,6 +55,7 @@ function normalise(item) {
 export default function CorrectiveAction() {
   const [actions, setActions] = useState(defaultActions)
   const [search, setSearch] = useState('')
+  const [filterCompany, setFilterCompany] = useState('All')
   const [filterStatus, setFilterStatus] = useState('All')
   const [filterPriority, setFilterPriority] = useState('All')
   const [filterUnit, setFilterUnit] = useState('All')
@@ -75,6 +76,7 @@ export default function CorrectiveAction() {
           .filter(o => o.status !== 'Closed' && o.action)
           .map(o => ({
             id: `CA-${o.id}`,
+            companyCode: o.companyCode || '',
             source: 'Observation',
             sourceId: o.id,
             title: o.action,
@@ -102,20 +104,21 @@ export default function CorrectiveAction() {
     try { localStorage.setItem('sinshe-corrective-actions', JSON.stringify(actions)) } catch {}
   }, [actions])
 
-  const filtered = useMemo(() => actions.filter(a => {
+  const companyScoped = useMemo(() => filterCompany === 'All' ? actions : actions.filter(a => a.companyCode === filterCompany), [actions, filterCompany])
+  const filtered = useMemo(() => companyScoped.filter(a => {
     const q = search.trim().toLowerCase()
-    const matchesSearch = !q || [a.id, a.sourceId, a.title, a.unit, a.location, a.pic].join(' ').toLowerCase().includes(q)
+    const matchesSearch = !q || [a.id, a.companyCode, a.sourceId, a.title, a.unit, a.location, a.pic].join(' ').toLowerCase().includes(q)
     return matchesSearch &&
       (filterStatus === 'All' || a.status === filterStatus) &&
       (filterPriority === 'All' || a.priority === filterPriority) &&
       (filterUnit === 'All' || a.unit === filterUnit)
-  }), [actions, search, filterStatus, filterPriority, filterUnit])
+  }), [companyScoped, search, filterStatus, filterPriority, filterUnit])
 
-  const open = actions.filter(a => a.status === 'Open').length
-  const inProgress = actions.filter(a => a.status === 'In Progress').length
-  const overdue = actions.filter(a => a.status === 'Overdue' || isOverdue(a)).length
-  const closed = actions.filter(a => a.status === 'Closed').length
-  const closureRate = actions.length ? Math.round((closed / actions.length) * 100) : 0
+  const open = companyScoped.filter(a => a.status === 'Open').length
+  const inProgress = companyScoped.filter(a => a.status === 'In Progress').length
+  const overdue = companyScoped.filter(a => a.status === 'Overdue' || isOverdue(a)).length
+  const closed = companyScoped.filter(a => a.status === 'Closed').length
+  const closureRate = companyScoped.length ? Math.round((closed / companyScoped.length) * 100) : 0
 
   const bars = [
     { label: 'Open', value: open, tone: 'red' },
@@ -147,23 +150,24 @@ export default function CorrectiveAction() {
 
   function saveAction(e) {
     e.preventDefault()
-    if (!form.title.trim() || !form.location.trim() || !form.pic.trim() || !form.dueDate) {
-      setNotice('Lengkapi tindakan, lokasi, PIC dan due date terlebih dahulu.')
+    if (!form.companyCode || !form.title.trim() || !form.location.trim() || !form.pic.trim() || !form.dueDate) {
+      setNotice('Pilih Company/PT dan lengkapi tindakan, lokasi, PIC serta due date terlebih dahulu.')
       return
     }
-    const next = actions.length + 1
+    const next = Math.max(0, ...actions.map(a => Number(a.id.split('-').pop()) || 0)) + 1
     const id = `CA-2026-${String(next).padStart(3, '0')}`
     const createdAt = new Date().toISOString().slice(0, 10)
     setActions(prev => [{ id, ...form, createdAt }, ...prev])
+    setFilterCompany(form.companyCode)
     setForm(emptyForm)
     setModalOpen(false)
-    setNotice(`${id} berhasil ditambahkan.`)
+    setNotice(`${id} berhasil ditambahkan untuk PT ${form.companyCode}.`)
     setTimeout(() => setNotice(''), 3000)
   }
 
   function exportCSV() {
-    const rows = filtered.map(a => [a.id, a.source, a.sourceId, a.title, a.unit, a.location, a.category, a.priority, a.pic, a.dueDate, a.status, a.progress, a.evidence])
-    const header = ['ID', 'Source', 'Source ID', 'Corrective Action', 'Unit', 'Location', 'Category', 'Priority', 'PIC', 'Due Date', 'Status', 'Progress', 'Evidence']
+    const rows = filtered.map(a => [a.id, a.companyCode || '', a.source, a.sourceId, a.title, a.unit, a.location, a.category, a.priority, a.pic, a.dueDate, a.status, a.progress, a.evidence])
+    const header = ['ID', 'Company/PT', 'Source', 'Source ID', 'Corrective Action', 'Unit', 'Location', 'Category', 'Priority', 'PIC', 'Due Date', 'Status', 'Progress', 'Evidence']
     const csv = [header, ...rows].map(row => row.map(v => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -185,67 +189,48 @@ export default function CorrectiveAction() {
     </div>
 
     <div className={styles.headerRow}>
-      <div>
-        <h2>Corrective Action Register</h2>
-        <p>Satu register untuk tindak lanjut hasil inspeksi, observasi, insiden, audit dan compliance.</p>
-      </div>
-      <div className={styles.buttons}>
-        <button className={styles.secondary} onClick={exportCSV}><Download size={17}/> Export CSV</button>
-        <button className={styles.primary} onClick={() => setModalOpen(true)}><Plus size={18}/> Action Baru</button>
-      </div>
+      <div><h2>Corrective Action Register</h2><p>Satu register tindak lanjut per Company/PT untuk inspeksi, observasi, insiden, audit dan compliance.</p></div>
+      <div className={styles.buttons}><button className={styles.secondary} onClick={exportCSV}><Download size={17}/> Export CSV</button><button className={styles.primary} onClick={() => setModalOpen(true)}><Plus size={18}/> Action Baru</button></div>
     </div>
 
     <Panel className={styles.tablePanel}>
       <div className={styles.filters}>
-        <label className={styles.search}><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari action, PIC, source ID..."/></label>
+        <label className={styles.search}><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari action, PT, PIC, source ID..."/></label>
+        <label><select value={filterCompany} onChange={e => setFilterCompany(e.target.value)}><option value="All">All Companies</option>{COMPANY_MASTER.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></label>
         <label><Filter size={15}/><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}><option>All</option>{statuses.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}><option>All</option>{priorities.map(v => <option key={v}>{v}</option>)}</select></label>
         <label><select value={filterUnit} onChange={e => setFilterUnit(e.target.value)}><option>All</option>{units.map(v => <option key={v}>{v}</option>)}</select></label>
       </div>
 
       <div className="table-wrap"><table>
-        <thead><tr><th>ID</th><th>Source</th><th>Corrective Action</th><th>Unit / Lokasi</th><th>Priority</th><th>PIC</th><th>Due Date</th><th>Progress</th><th>Status</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>ID</th><th>PT</th><th>Source</th><th>Corrective Action</th><th>Unit / Lokasi</th><th>Priority</th><th>PIC</th><th>Due Date</th><th>Progress</th><th>Status</th><th>Aksi</th></tr></thead>
         <tbody>
           {filtered.map(a => <tr key={a.id} className={a.status === 'Overdue' ? styles.overdueRow : ''}>
-            <td><b>{a.id}</b><small className={styles.block}>{a.sourceId || a.source}</small></td>
-            <td>{a.source}</td>
+            <td><b>{a.id}</b><small className={styles.block}>{a.sourceId || a.source}</small></td><td><b>{a.companyCode || '-'}</b></td><td>{a.source}</td>
             <td className={styles.actionCell}><b>{a.title}</b><small>{a.category}{a.evidence ? ` • Evidence: ${a.evidence}` : ''}</small></td>
-            <td><b>{a.unit}</b><small className={styles.block}>{a.location}</small></td>
-            <td><Badge tone={tone(a.priority)}>{a.priority}</Badge></td>
-            <td>{a.pic}</td>
+            <td><b>{a.unit}</b><small className={styles.block}>{a.location}</small></td><td><Badge tone={tone(a.priority)}>{a.priority}</Badge></td><td>{a.pic}</td>
             <td><span className={a.status === 'Overdue' ? styles.overdueText : ''}>{fmt(a.dueDate)}</span></td>
             <td><div className={styles.progressWrap}><div className={styles.progressTrack}><span style={{width:`${Math.min(100, a.progress || 0)}%`}}/></div><b>{a.progress || 0}%</b></div></td>
             <td><Badge tone={tone(a.status)}>{a.status}</Badge></td>
-            <td><div className={styles.rowActions}>
-              {a.status === 'Open' && <button onClick={() => changeStatus(a.id, 'In Progress')}><PlayCircle size={14}/> Start</button>}
-              {a.status !== 'Closed' && <button className={styles.closeAction} onClick={() => changeStatus(a.id, 'Closed')}><ShieldCheck size={14}/> Close</button>}
-              {a.status === 'Closed' && <span className={styles.done}><CheckCircle2 size={14}/> Done</span>}
-            </div></td>
+            <td><div className={styles.rowActions}>{a.status === 'Open' && <button onClick={() => changeStatus(a.id, 'In Progress')}><PlayCircle size={14}/> Start</button>}{a.status !== 'Closed' && <button className={styles.closeAction} onClick={() => changeStatus(a.id, 'Closed')}><ShieldCheck size={14}/> Close</button>}{a.status === 'Closed' && <span className={styles.done}><CheckCircle2 size={14}/> Done</span>}</div></td>
           </tr>)}
-          {!filtered.length && <tr><td colSpan="10" className={styles.empty}>Tidak ada corrective action yang sesuai filter.</td></tr>}
+          {!filtered.length && <tr><td colSpan="11" className={styles.empty}>Tidak ada corrective action yang sesuai filter.</td></tr>}
         </tbody>
       </table></div>
     </Panel>
 
     <div className="dashboard-split mt">
       <Panel title="Status Corrective Action"><BarList data={bars}/></Panel>
-      <Panel title="Prioritas Hari Ini">
-        <div className={styles.priorityBox}>
-          <AlertTriangle size={24}/>
-          <div><b>{overdue} action overdue</b><p>Prioritaskan tindak lanjut yang melewati due date dan action dengan level Critical/High.</p></div>
-        </div>
-        <div className={styles.metric}><span>Critical / High Active</span><b>{actions.filter(a => ['Critical','High'].includes(a.priority) && a.status !== 'Closed').length}</b></div>
-        <div className={styles.metric}><span>Total Action</span><b>{actions.length}</b></div>
-        <div className={styles.metric}><span>Closed</span><b className="green-text">{closed}</b></div>
-      </Panel>
+      <Panel title="Prioritas Hari Ini"><div className={styles.priorityBox}><AlertTriangle size={24}/><div><b>{overdue} action overdue</b><p>Prioritaskan tindak lanjut yang melewati due date dan action dengan level Critical/High.</p></div></div><div className={styles.metric}><span>Critical / High Active</span><b>{companyScoped.filter(a => ['Critical','High'].includes(a.priority) && a.status !== 'Closed').length}</b></div><div className={styles.metric}><span>Total Action</span><b>{companyScoped.length}</b></div><div className={styles.metric}><span>Closed</span><b className="green-text">{closed}</b></div></Panel>
     </div>
 
-    <div className={styles.info}><Clock3 size={20}/><div><b>Terhubung dengan Inspection & Observation</b><span>Temuan observasi yang memiliki action plan otomatis dibaca dari browser dan dimasukkan ke register ini. Menutup corrective action dari source observasi juga menutup status observasinya.</span></div></div>
+    <div className={styles.info}><Clock3 size={20}/><div><b>Terhubung dengan Inspection, Observation & Incident</b><span>Company/PT dari source ikut diwariskan ke corrective action sehingga filtering Executive Dashboard tetap konsisten.</span></div></div>
 
     {modalOpen && <div className={styles.backdrop} onMouseDown={e => { if (e.target === e.currentTarget) setModalOpen(false) }}>
       <div className={styles.modal} role="dialog" aria-modal="true">
         <div className={styles.modalHead}><div><span>SINSHE 2.0</span><h2>Corrective Action Baru</h2><p>Tambahkan tindak lanjut manual atau dari hasil audit/temuan.</p></div><button onClick={() => setModalOpen(false)}><X size={20}/></button></div>
         <form onSubmit={saveAction} className={styles.form}>
+          <label>Company / PT<select value={form.companyCode} onChange={e => setForm({...form, companyCode:e.target.value})}>{COMPANY_MASTER.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></label>
           <label className={styles.full}>Corrective Action<textarea value={form.title} onChange={e => setForm({...form, title:e.target.value})} placeholder="Jelaskan tindakan perbaikan yang harus dilakukan..."/></label>
           <label>Source<select value={form.source} onChange={e => setForm({...form, source:e.target.value})}><option>Manual</option><option>Inspection</option><option>Observation</option><option>Incident</option><option>Audit</option><option>Compliance</option></select></label>
           <label>Source ID<input value={form.sourceId} onChange={e => setForm({...form, sourceId:e.target.value})} placeholder="Opsional"/></label>
