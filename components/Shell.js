@@ -47,6 +47,7 @@ const groups = [
     items: [
       { href: '/ai-recommendation', label: 'AI Recommendation', icon: BrainCircuit },
       { href: '/mobile-platform', label: 'Mobile Platform', icon: Smartphone },
+      { href: '/company-master', label: 'Master Data PT', icon: Network },
       { href: '/administration', label: 'Administration', icon: Settings },
     ],
   },
