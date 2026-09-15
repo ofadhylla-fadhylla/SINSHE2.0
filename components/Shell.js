@@ -54,7 +54,7 @@ export default function Shell({ children, title, subtitle }) {
         <div className="brand-block">
           <div className="brand-mark">S</div>
           <div>
-            <div className="brand-name">SHINSE <span>2.0</span></div>
+            <div className="brand-name">SINSHE <span>2.0</span></div>
             <div className="brand-sub">Safety • Health • Environment</div>
           </div>
           <button className="icon-btn mobile-only" aria-label="Tutup menu" onClick={() => setOpen(false)}><X size={20}/></button>
