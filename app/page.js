@@ -1,5 +1,8 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
 import Shell from '../components/Shell'
-import { Badge, BarList, Donut, Panel, Progress, SectionTitle, StatCard } from '../components/Ui'
+import { Badge, BarList, Donut, Panel, Progress, StatCard } from '../components/Ui'
 import { AlertTriangle, Award, CheckCircle2, Clock3, FileCheck2, Flame, Gauge, ShieldCheck, Siren, TrendingDown } from 'lucide-react'
 
 const estates = ['PKS A', 'PKS B', 'PKS C', 'Estate 1', 'Estate 2', 'Estate 3']
@@ -13,7 +16,7 @@ const heat = [
 ]
 const heatTone = v => v >= 4 ? 'h-crit' : v === 3 ? 'h-high' : v === 2 ? 'h-med' : 'h-low'
 
-const incidents = [
+const fallbackIncidentBars = [
   { label: 'Near Miss', value: 34, tone: 'blue' },
   { label: 'First Aid', value: 21, tone: 'green' },
   { label: 'Medical Treatment', value: 12, tone: 'orange' },
@@ -28,13 +31,85 @@ const reminders = [
   ['Renewal Izin Lingkungan', 'PKS B', '58 Hari', 'green'],
 ]
 
+function safeRead(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
 export default function Executive(){
+  const [operational, setOperational] = useState({ incidents: [], actions: [], observations: [], loaded: false })
+
+  useEffect(() => {
+    setOperational({
+      incidents: safeRead('sinshe-incidents'),
+      actions: safeRead('sinshe-corrective-actions'),
+      observations: safeRead('sinshe-observations'),
+      loaded: true,
+    })
+  }, [])
+
+  const metrics = useMemo(() => {
+    const { incidents, actions, observations, loaded } = operational
+    if (!loaded || (!incidents.length && !actions.length && !observations.length)) {
+      return {
+        openIncidents: 7,
+        highPriority: 3,
+        overdueActions: 12,
+        closureRate: 96,
+        daysWithoutLTI: 184,
+        safetyIndex: 87,
+        incidentBars: fallbackIncidentBars,
+        live: false,
+      }
+    }
+
+    const openIncidents = incidents.filter(i => i.status !== 'Closed').length
+    const highPriority = incidents.filter(i => ['High', 'Critical'].includes(i.severity) && i.status !== 'Closed').length
+    const overdueActions = actions.filter(a => {
+      if (a.status === 'Closed') return false
+      if (a.status === 'Overdue') return true
+      if (!a.dueDate) return false
+      return new Date(`${a.dueDate}T23:59:59`) < new Date()
+    }).length
+    const closedActions = actions.filter(a => a.status === 'Closed').length
+    const closureRate = actions.length ? Math.round((closedActions / actions.length) * 100) : 0
+    const latestLTI = [...incidents].filter(i => i.type === 'Lost Time Injury').sort((a,b) => b.date.localeCompare(a.date))[0]
+    const daysWithoutLTI = latestLTI ? Math.max(0, Math.floor((new Date() - new Date(`${latestLTI.date}T00:00:00`)) / 86400000)) : 0
+    const criticalOpen = incidents.filter(i => i.severity === 'Critical' && i.status !== 'Closed').length
+    const unsafeOpen = observations.filter(o => o.status !== 'Closed' && ['High', 'Critical'].includes(o.risk)).length
+    const safetyIndex = Math.max(35, Math.min(100, 96 - criticalOpen * 8 - overdueActions * 3 - unsafeOpen * 2 + Math.min(closedActions, 8)))
+
+    const types = ['Near Miss', 'First Aid', 'Medical Treatment', 'Lost Time Injury', 'Property Damage', 'Environmental', 'Fire']
+    const incidentBars = types.map(type => ({
+      label: type,
+      value: incidents.filter(i => i.type === type).length,
+      tone: type === 'Lost Time Injury' || type === 'Fire' ? 'red' : type === 'Medical Treatment' ? 'orange' : type === 'Near Miss' ? 'blue' : 'green',
+    })).filter(x => x.value > 0)
+
+    return {
+      openIncidents,
+      highPriority,
+      overdueActions,
+      closureRate,
+      daysWithoutLTI,
+      safetyIndex,
+      incidentBars: incidentBars.length ? incidentBars : fallbackIncidentBars,
+      live: true,
+    }
+  }, [operational])
+
   return <Shell title="Executive Dashboard" subtitle="Ringkasan kinerja Safety, Health & Environment lintas unit operasi secara real-time.">
+    {metrics.live && <div style={{marginBottom:14,padding:'9px 12px',border:'1px solid #d9e9dd',background:'#f1f8f3',borderRadius:10,fontSize:11,fontWeight:800,color:'#176b34'}}>LIVE BROWSER DATA • KPI membaca data dari Inspection, Incident dan Corrective Action di browser ini.</div>}
+
     <div className="stats-grid six">
       <StatCard label="TRIFR" value="1.42" hint="-18% vs 2025" tone="green" icon={<TrendingDown/>}/>
       <StatCard label="LTIFR" value="0.36" hint="Target < 0.50" tone="green" icon={<ShieldCheck/>}/>
-      <StatCard label="Open Incident" value="7" hint="3 high priority" tone="orange" icon={<Siren/>}/>
-      <StatCard label="Overdue Action" value="12" hint="perlu tindak lanjut" tone="red" icon={<AlertTriangle/>}/>
+      <StatCard label="Open Incident" value={metrics.openIncidents} hint={`${metrics.highPriority} high / critical`} tone="orange" icon={<Siren/>}/>
+      <StatCard label="Overdue Action" value={metrics.overdueActions} hint="perlu tindak lanjut" tone="red" icon={<AlertTriangle/>}/>
       <StatCard label="Compliance" value="92.4%" hint="+8.6% vs bulan lalu" tone="blue" icon={<FileCheck2/>}/>
       <StatCard label="Active Permit" value="28" hint="hari ini" tone="purple" icon={<Award/>}/>
     </div>
@@ -53,11 +128,11 @@ export default function Executive(){
       </Panel>
 
       <Panel title="Safety Performance Index">
-        <div className="donut-wrap"><Donut value={87} tone="green" label="Index"/></div>
+        <div className="donut-wrap"><Donut value={metrics.safetyIndex} tone="green" label="Index"/></div>
         <div className="mini-metric-list">
           <div><span>Leading Indicator</span><b className="green-text">Baik</b></div>
-          <div><span>Lagging Indicator</span><b className="green-text">Terkendali</b></div>
-          <div><span>Days Without LTI</span><b>184 Hari</b></div>
+          <div><span>Lagging Indicator</span><b className={metrics.highPriority > 2 ? 'red-text' : 'green-text'}>{metrics.highPriority > 2 ? 'Perlu Perhatian' : 'Terkendali'}</b></div>
+          <div><span>Days Without LTI</span><b>{metrics.daysWithoutLTI} Hari</b></div>
         </div>
       </Panel>
     </div>
@@ -80,7 +155,7 @@ export default function Executive(){
       </Panel>
 
       <Panel title="Insiden per Kategori">
-        <BarList data={incidents}/>
+        <BarList data={metrics.incidentBars}/>
       </Panel>
     </div>
 
@@ -104,9 +179,9 @@ export default function Executive(){
 
     <div className="impact-grid">
       <div><ShieldCheck/><b>0</b><span>Fatality (Zero Harm)</span></div>
-      <div><CheckCircle2/><b>96%</b><span>Action closure rate</span></div>
+      <div><CheckCircle2/><b>{metrics.closureRate}%</b><span>Action closure rate</span></div>
       <div><Gauge/><b>-30%</b><span>Response time</span></div>
-      <div><Flame/><b>-42%</b><span>High risk finding</span></div>
+      <div><Flame/><b>{metrics.highPriority}</b><span>High / critical incident</span></div>
     </div>
   </Shell>
 }
