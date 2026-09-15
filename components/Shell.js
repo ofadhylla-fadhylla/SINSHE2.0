@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck,
-  FileCheck2, LayoutDashboard, Menu, Network, Search, ShieldCheck, Siren,
+  FileCheck2, LayoutDashboard, ListTodo, Menu, Network, Search, ShieldCheck, Siren,
   Settings, Wrench, X
 } from 'lucide-react'
 import { useState } from 'react'
@@ -23,6 +23,7 @@ const groups = [
     items: [
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
+      { href: '/corrective-action', label: 'Corrective Action Tracking', icon: ListTodo },
       { href: '/incident', label: 'Incident Management', icon: Siren },
       { href: '/permit-to-work', label: 'Permit to Work', icon: ShieldCheck },
     ],
