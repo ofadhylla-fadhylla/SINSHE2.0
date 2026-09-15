@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch, FolderOpen,
-  GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
+  Gauge, GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -54,6 +54,7 @@ const groups = [
     title: 'INTELLIGENCE & SYSTEM',
     items: [
       { href: '/reminder-engine', label: 'Reminder Engine', icon: Bell },
+      { href: '/risk-intelligence', label: 'Predictive Risk Intelligence', icon: Gauge },
       { href: '/ai-recommendation', label: 'AI Recommendation', icon: BrainCircuit },
       { href: '/mobile-platform', label: 'Mobile Platform', icon: Smartphone },
       { href: '/company-master', label: 'Master Data PT', icon: Network },
