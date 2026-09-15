@@ -1,22 +1,23 @@
+import Link from 'next/link'
 import Shell from '../../components/Shell'
 import { SectionTitle, StatCard } from '../../components/Ui'
 import { Activity, BrainCircuit, Cloud, Database, FileCheck2, Gauge, Leaf, Network, ShieldCheck, Smartphone, Users, Workflow } from 'lucide-react'
 
 const modules = [
-  ['1', 'Learning & Competency', 'Training, sertifikasi, kompetensi & lisensi', 'red'],
-  ['2', 'Hazard & Risk Management', 'HIRA, JSA, Risk Register & Assessment', 'orange'],
-  ['3', 'Inspection & Observation', 'Checklist, temuan & tindakan korektif', 'green'],
-  ['4', 'Incident Management', 'Near miss, LTI, MTC, investigasi & RCA', 'teal'],
-  ['5', 'Permit to Work', 'Work permit digital, approval & tracking', 'blue'],
-  ['6', 'Asset Integrity Management', 'Boiler, crane, forklift, vessel & WWTP', 'navy'],
-  ['7', 'Regulatory Compliance', 'Legal register, SMK3, ISPO, RSPO & ESG', 'purple'],
-  ['8', 'Executive Dashboard', 'KPI, heatmap, analytics & reporting real-time', 'blue'],
-  ['9', 'AI Recommendation Engine', 'Prediksi risiko, anomaly detection & rekomendasi', 'green'],
-  ['10', 'Mobile Platform', 'Akses mobile, offline, QR, GPS & camera', 'green'],
+  ['1', 'Learning & Competency', 'Training, sertifikasi, kompetensi & lisensi', 'red', '/learning-competency'],
+  ['2', 'Hazard & Risk Management', 'HIRA, JSA, Risk Register & Assessment', 'orange', '/hazard-risk'],
+  ['3', 'Inspection & Observation', 'Checklist, temuan & tindakan korektif', 'green', '/inspection'],
+  ['4', 'Incident Management', 'Near miss, LTI, MTC, investigasi & RCA', 'teal', '/incident'],
+  ['5', 'Permit to Work', 'Work permit digital, approval & tracking', 'blue', '/permit-to-work'],
+  ['6', 'Asset Integrity Management', 'Boiler, crane, forklift, vessel & WWTP', 'navy', '/asset-integrity'],
+  ['7', 'Regulatory Compliance', 'Legal register, SMK3, ISPO, RSPO & ESG', 'purple', '/regulatory-compliance'],
+  ['8', 'Executive Dashboard', 'KPI, heatmap, analytics & reporting real-time', 'blue', '/'],
+  ['9', 'AI Recommendation Engine', 'Prediksi risiko, anomaly detection & rekomendasi', 'green', '/ai-recommendation'],
+  ['10', 'Mobile Platform', 'Akses lapangan, offline draft, GPS, camera & QR asset lookup', 'green', '/mobile-platform'],
 ]
 
 export default function Ecosystem(){
-  return <Shell title="SHINSE 2.0 Ecosystem" subtitle="Smart Integrated Network for Safety, Health & Environment — satu platform untuk data, proses, manusia dan teknologi.">
+  return <Shell title="SINSHE 2.0 Ecosystem" subtitle="Smart Integrated Network for Safety, Health & Environment — satu platform untuk data, proses, manusia dan teknologi.">
     <div className="hero-strip">
       <div><strong>FROM REACTIVE SAFETY</strong><span>TO PREDICTIVE SAFETY</span></div>
       <div className="hero-pills"><span>1 Platform Terintegrasi</span><span>Data Real-time</span><span>AI & Analitik</span><span>Keputusan Cepat</span></div>
@@ -24,9 +25,9 @@ export default function Ecosystem(){
 
     <div className="stats-grid four">
       <StatCard label="Fatality" value="0" hint="Zero Harm" tone="red" icon={<ShieldCheck/>}/>
-      <StatCard label="High Risk Incident" value="-50%" hint="vs 2025" tone="orange" icon={<Activity/>}/>
-      <StatCard label="Response Time" value="-30%" hint="vs 2025" tone="blue" icon={<Gauge/>}/>
-      <StatCard label="Compliance" value="100%" hint="Audit & Regulation" tone="purple" icon={<FileCheck2/>}/>
+      <StatCard label="High Risk Incident" value="-50%" hint="Target vs baseline" tone="orange" icon={<Activity/>}/>
+      <StatCard label="Response Time" value="-30%" hint="Target improvement" tone="blue" icon={<Gauge/>}/>
+      <StatCard label="Compliance" value="100%" hint="Target Audit & Regulation" tone="purple" icon={<FileCheck2/>}/>
     </div>
 
     <div className="ecosystem-layout">
@@ -43,7 +44,7 @@ export default function Ecosystem(){
       <div className="panel wide">
         <SectionTitle title="Enterprise Modules" action="10 Modules" />
         <div className="module-grid">
-          {modules.map(([n,title,desc,tone]) => <div className={`module-card m-${tone}`} key={n}><div className="module-no">{n}</div><div><h3>{title}</h3><p>{desc}</p></div></div>)}
+          {modules.map(([n,title,desc,tone,href]) => <Link href={href} className={`module-card m-${tone}`} key={n} style={{textDecoration:'none',color:'inherit'}}><div className="module-no">{n}</div><div><h3>{title}</h3><p>{desc}</p></div></Link>)}
         </div>
       </div>
 
@@ -53,7 +54,7 @@ export default function Ecosystem(){
           <div><Cloud/><span><b>Cloud Platform</b><small>Scalable, secure & highly available.</small></span></div>
           <div><ShieldCheck/><span><b>Cyber Security</b><small>Encryption, access management & audit trail.</small></span></div>
           <div><BrainCircuit/><span><b>AI & Machine Learning</b><small>Predictive model, anomaly detection & rekomendasi.</small></span></div>
-          <div><Smartphone/><span><b>Mobile & Web</b><small>Akses mudah, kapan saja & di mana saja.</small></span></div>
+          <div><Smartphone/><span><b>Mobile & Web</b><small>Akses mudah untuk pekerja lapangan dan manajemen.</small></span></div>
         </div>
       </div>
     </div>

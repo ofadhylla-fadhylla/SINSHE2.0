@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, FileCheck2,
   GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
-  ShieldCheck, Siren, Settings, UserCircle2, Wrench, X
+  ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { canAccess, getSessionRole, roles, setSessionRole } from '../lib/access'
@@ -46,6 +46,7 @@ const groups = [
     title: 'INTELLIGENCE & SYSTEM',
     items: [
       { href: '/ai-recommendation', label: 'AI Recommendation', icon: BrainCircuit },
+      { href: '/mobile-platform', label: 'Mobile Platform', icon: Smartphone },
       { href: '/administration', label: 'Administration', icon: Settings },
     ],
   },
