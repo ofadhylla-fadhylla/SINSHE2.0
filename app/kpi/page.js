@@ -41,7 +41,7 @@ function monthKey(value){ const d=new Date(value); if(Number.isNaN(d.getTime()))
 function isExpired(value){ return !!value && new Date(`${isoDate(value)}T23:59:59`) < new Date() }
 function pct(value){ return Number.isFinite(value)?Math.round(value*10)/10:null }
 function changePct(current,previous){ if(!previous)return null; return pct(((current-previous)/previous)*100) }
-function formatDelta(value){ if(value===null)return 'Baseline needed'; if(value===0)return '0%'; return `${value>0?'+':''}${value}%` }
+function formatDelta(value){ if(value===null||value===undefined)return 'Baseline needed'; if(value===0)return '0%'; return `${value>0?'+':''}${value}%` }
 function linePoints(values,maxValue){
   return values.map((value,index)=>`${Math.round(55+index*(595/Math.max(1,values.length-1)))},${Math.round(245-((value||0)/Math.max(1,maxValue))*175)}`).join(' ')
 }
@@ -110,7 +110,7 @@ export default function KPI(){
   },[data,filters])
 
   const byYear=(list,targetYear)=>list.filter(item=>!recordYear(item)||recordYear(item)===targetYear)
-  const previousYear=String(Number(year=== 'All'?CURRENT_YEAR:year)-1)
+  const previousYear=String(Number(year==='All'?CURRENT_YEAR:year)-1)
 
   const metrics=useMemo(()=>{
     if(!data.loaded)return null
@@ -208,11 +208,11 @@ export default function KPI(){
 
     <div className="stats-grid six">
       <StatCard label="Fatality" value={metrics?.fatality??0} hint="Target: Zero Harm" tone="red" icon={<ShieldCheck/>}/>
-      <StatCard label="High Risk Incident" value={metrics?.highRiskDelta===null?(metrics?.highRiskIncidents??0):formatDelta(metrics.highRiskDelta)} hint={metrics?.highRiskDelta===null?'baseline YoY belum tersedia':'vs tahun sebelumnya'} tone="orange" icon={<AlertTriangle/>}/>
+      <StatCard label="High Risk Incident" value={metrics?.highRiskDelta==null?(metrics?.highRiskIncidents??0):formatDelta(metrics.highRiskDelta)} hint={metrics?.highRiskDelta==null?'baseline YoY belum tersedia':'vs tahun sebelumnya'} tone="orange" icon={<AlertTriangle/>}/>
       <StatCard label="Response Time" value="—" hint="butuh timestamp response" tone="blue" icon={<Clock3/>}/>
-      <StatCard label="Safety Observation" value={metrics?.safetyDelta===null?(metrics?.safetyObservation??0):formatDelta(metrics.safetyDelta)} hint={metrics?.safetyDelta===null?'record pada scope':'vs tahun sebelumnya'} tone="green" icon={<BarChart3/>}/>
-      <StatCard label="Compliance" value={metrics?.compScore===null?'—':`${metrics?.compScore??0}%`} hint="Legal & regulatory register" tone="purple" icon={<FileCheck2/>}/>
-      <StatCard label="ESG" value={metrics?.esgScore===null?'—':`${metrics?.esgScore??0}%`} hint="Sustainability obligations" tone="green" icon={<Leaf/>}/>
+      <StatCard label="Safety Observation" value={metrics?.safetyDelta==null?(metrics?.safetyObservation??0):formatDelta(metrics.safetyDelta)} hint={metrics?.safetyDelta==null?'record pada scope':'vs tahun sebelumnya'} tone="green" icon={<BarChart3/>}/>
+      <StatCard label="Compliance" value={metrics?.compScore==null?'—':`${metrics.compScore}%`} hint="Legal & regulatory register" tone="purple" icon={<FileCheck2/>}/>
+      <StatCard label="ESG" value={metrics?.esgScore==null?'—':`${metrics.esgScore}%`} hint="Sustainability obligations" tone="green" icon={<Leaf/>}/>
     </div>
 
     <div className="kpi-layout">
