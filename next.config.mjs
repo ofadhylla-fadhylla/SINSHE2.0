@@ -1,10 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async redirects() {
-    return [
-      { source: '/mobile-platform', destination: '/mobile', permanent: false },
-    ]
-  },
   async headers() {
     return [
       {
