@@ -1,8 +1,8 @@
 /* Sidebar visual grouping and exact SINSHE branding */
 .sidebar{padding:14px 12px 16px}
-.brand-block{position:relative;display:flex;align-items:center;justify-content:center;min-height:94px;padding:4px 6px 12px;border-bottom:1px solid var(--line);background:#fff}
-.brand-logo{display:none!important}
-.brand-block::before{content:"";display:block;width:230px;height:80px;background:url('/sinshe-logo.jpg') center/contain no-repeat}
+.brand-block{position:relative;display:flex;align-items:center;justify-content:center;min-height:102px;padding:8px 8px 13px;border-bottom:1px solid var(--line);background:#fff;overflow:hidden}
+.brand-block::before,.brand-block::after{content:none!important;display:none!important}
+.brand-logo{display:block!important;content:url('/sinshe-logo.jpg')!important;width:230px!important;max-width:100%!important;height:auto!important;max-height:80px!important;object-fit:contain!important;object-position:center!important;border:0!important;border-radius:0!important;background:#fff!important;box-shadow:none!important}
 .brand-block>.mobile-only{position:absolute;right:2px;top:2px}
 .nav-list{padding-top:12px;display:flex;flex:1;min-height:0;overflow-y:auto;flex-direction:column;gap:9px;scrollbar-width:thin}
 .nav-group{background:#f8fafb;border:1px solid #edf0f2;border-radius:15px;padding:5px 5px 7px}
@@ -13,4 +13,4 @@
 .nav-item.active{background:#e4f1e8;color:var(--green);box-shadow:inset 3px 0 0 var(--green)}
 .sidebar-footer{margin-top:10px;padding-top:2px}
 .predictive-pill{margin-top:9px}
-@media(max-width:900px){.sidebar{width:292px;padding:12px}.brand-block::before{width:230px;height:80px}.nav-list{padding-top:10px}.nav-group{border-radius:13px}}
+@media(max-width:900px){.sidebar{width:292px;padding:12px}.brand-block{min-height:100px;padding:8px 10px 12px}.brand-logo{width:230px!important}.nav-list{padding-top:10px}.nav-group{border-radius:13px}}
