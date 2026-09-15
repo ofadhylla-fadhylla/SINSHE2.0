@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck,
-  FileCheck2, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
+  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, FileCheck2,
+  GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
   ShieldCheck, Siren, Settings, UserCircle2, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -27,6 +27,7 @@ const groups = [
   {
     title: 'HSE OPERATIONS',
     items: [
+      { href: '/learning-competency', label: 'Learning & Competency', icon: GraduationCap },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
       { href: '/corrective-action', label: 'Corrective Action Tracking', icon: ListTodo },
