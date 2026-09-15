@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck,
-  FileCheck2, LayoutDashboard, ListTodo, LogOut, Menu, Network, Search,
+  FileCheck2, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
   ShieldCheck, Siren, Settings, UserCircle2, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -50,6 +50,17 @@ const groups = [
 ]
 
 const initials = value => (value || 'User').split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase()
+
+const accountActionStyle = {
+  width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+  border:'1px solid rgba(255,255,255,.18)', background:'rgba(255,255,255,.08)', color:'#fff',
+  borderRadius:10, padding:'9px 10px', fontWeight:800, fontSize:12, cursor:'pointer', textDecoration:'none'
+}
+
+const topAuthStyle = {
+  display:'inline-flex', alignItems:'center', gap:7, border:'1px solid var(--line)', background:'#fff',
+  borderRadius:11, padding:'9px 12px', fontWeight:850, color:'#0c5a2b', cursor:'pointer', textDecoration:'none'
+}
 
 export default function Shell({ children, title, subtitle }) {
   const path = usePathname()
@@ -159,6 +170,11 @@ export default function Shell({ children, title, subtitle }) {
         </nav>
 
         <div className="sidebar-footer">
+          {configured ? (
+            <button type="button" onClick={handleLogout} style={accountActionStyle}><LogOut size={16}/> Logout</button>
+          ) : (
+            <Link href="/login" onClick={() => setOpen(false)} style={accountActionStyle}><LogIn size={16}/> Login</Link>
+          )}
           <div className="predictive-pill"><Activity size={18}/> From Reactive to Predictive Safety</div>
           <div className="small-note">KPN Plantations • Internal Platform</div>
         </div>
@@ -191,7 +207,11 @@ export default function Shell({ children, title, subtitle }) {
             </div>}
             <button className="icon-btn notification" aria-label="Notifikasi"><Bell size={20}/><span/></button>
             <div className="avatar">{initials(profile?.full_name || (configured ? profile?.email : role))}</div>
-            {configured && <button className="icon-btn" aria-label="Keluar" title="Keluar" onClick={handleLogout}><LogOut size={19}/></button>}
+            {configured ? (
+              <button type="button" onClick={handleLogout} style={topAuthStyle}><LogOut size={17}/> Logout</button>
+            ) : (
+              <Link href="/login" style={topAuthStyle}><LogIn size={17}/> Login</Link>
+            )}
           </div>
         </header>
         <section className="page-content">{children}</section>
