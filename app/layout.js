@@ -1,4 +1,5 @@
 import './globals.css'
+import './sidebar-overrides.css'
 
 export const metadata = {
   title: 'SINSHE 2.0 | KPN Plantations',
