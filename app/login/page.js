@@ -7,6 +7,7 @@ import {
   getCurrentUser, getMyProfile, isSupabaseConfigured, provisionInitialAdmin,
   signInWithPassword, signOut
 } from '../../lib/supabase-rest'
+import { hydrateCentralData } from '../../lib/central-sync'
 import { roles, setSessionRole } from '../../lib/access'
 import styles from './login.module.css'
 
@@ -36,6 +37,7 @@ export default function LoginPage() {
         if (profile?.active !== false) {
           const role = roles.includes(profile?.role) ? profile.role : 'Viewer'
           setSessionRole(role)
+          await hydrateCentralData({ seedIfEmpty: true })
           router.replace('/')
           return
         }
@@ -56,6 +58,7 @@ export default function LoginPage() {
     }
     const role = roles.includes(profile.role) ? profile.role : 'Viewer'
     setSessionRole(role)
+    await hydrateCentralData({ seedIfEmpty: true })
     router.replace('/')
   }
 

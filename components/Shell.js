@@ -13,6 +13,7 @@ import {
   getCurrentUser, getMyProfile, getStoredProfile, isSupabaseConfigured,
   signOut as supabaseSignOut
 } from '../lib/supabase-rest'
+import CentralSync from './CentralSync'
 
 const groups = [
   {
@@ -141,6 +142,7 @@ export default function Shell({ children, title, subtitle }) {
 
   return (
     <div className="app-shell">
+      <CentralSync enabled={configured && authReady} />
       {open && <div className="scrim mobile-only" onClick={() => setOpen(false)} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand-block">
@@ -203,7 +205,7 @@ export default function Shell({ children, title, subtitle }) {
             </select>}
             {configured && <div style={{display:'flex',alignItems:'center',gap:9,padding:'6px 9px',border:'1px solid var(--line)',borderRadius:12,background:'#fff'}}>
               <UserCircle2 size={18} color="var(--green)"/>
-              <div style={{display:'grid',lineHeight:1.15}}><b style={{fontSize:12}}>{profile?.full_name || profile?.email || 'SINSHE User'}</b><span style={{fontSize:10,color:'#7b858f'}}>{role} • {profile?.unit || '-'}</span></div>
+              <div style={{display:'grid',lineHeight:1.15}}><b style={{fontSize:12}}>{profile?.full_name || profile?.email || 'SINSHE User'}</b><span style={{fontSize:10,color:'#7b858f'}}>{role} • {profile?.unit || '-'} • Central Sync</span></div>
             </div>}
             <button className="icon-btn notification" aria-label="Notifikasi"><Bell size={20}/><span/></button>
             <div className="avatar">{initials(profile?.full_name || (configured ? profile?.email : role))}</div>
