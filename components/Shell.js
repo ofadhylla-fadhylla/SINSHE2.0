@@ -146,17 +146,13 @@ export default function Shell({ children, title, subtitle }) {
       {open && <div className="scrim mobile-only" onClick={() => setOpen(false)} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand-block">
-          <div className="brand-mark">S</div>
-          <div>
-            <div className="brand-name">SINSHE <span>2.0</span></div>
-            <div className="brand-sub">Safety • Health • Environment</div>
-          </div>
+          <img className="brand-logo" src="/sinshe-logo.svg" alt="SINSHE 2.0 - Smart Integrated Network for Safety, Health & Environment" />
           <button className="icon-btn mobile-only" aria-label="Tutup menu" onClick={() => setOpen(false)}><X size={20}/></button>
         </div>
 
         <nav className="nav-list">
           {visibleGroups.map(group => (
-            <div key={group.title}>
+            <div className="nav-group" key={group.title}>
               <div className="nav-section">{group.title}</div>
               {group.items.map(item => {
                 const Icon = item.icon
