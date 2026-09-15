@@ -1,7 +1,7 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'SHINSE 2.0 | KPN Plantations',
+  title: 'SINSHE 2.0 | KPN Plantations',
   description: 'Smart Integrated Network for Safety, Health & Environment — HSE dashboard for KPN Plantations.',
   generator: 'v0.app',
 }
