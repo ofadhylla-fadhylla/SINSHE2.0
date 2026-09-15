@@ -47,6 +47,7 @@ const groups = [
   {
     title: 'INTELLIGENCE & SYSTEM',
     items: [
+      { href: '/reminder-engine', label: 'Reminder Engine', icon: Bell },
       { href: '/ai-recommendation', label: 'AI Recommendation', icon: BrainCircuit },
       { href: '/mobile-platform', label: 'Mobile Platform', icon: Smartphone },
       { href: '/company-master', label: 'Master Data PT', icon: Network },
@@ -208,7 +209,7 @@ export default function Shell({ children, title, subtitle }) {
               <UserCircle2 size={18} color="var(--green)"/>
               <div style={{display:'grid',lineHeight:1.15}}><b style={{fontSize:12}}>{profile?.full_name || profile?.email || 'SINSHE User'}</b><span style={{fontSize:10,color:'#7b858f'}}>{role} • {profile?.unit || '-'} • Central Sync</span></div>
             </div>}
-            <button className="icon-btn notification" aria-label="Notifikasi"><Bell size={20}/><span/></button>
+            <button className="icon-btn notification" aria-label="Buka Reminder Engine" title="Reminder Engine" onClick={()=>router.push('/reminder-engine')}><Bell size={20}/><span/></button>
             <div className="avatar">{initials(profile?.full_name || (configured ? profile?.email : role))}</div>
             {configured ? (
               <button type="button" onClick={handleLogout} style={topAuthStyle}><LogOut size={17}/> Logout</button>
