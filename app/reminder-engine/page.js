@@ -23,6 +23,8 @@ const SOURCES=[
   {key:'hazard',label:'Hazard & Risk',table:'hazards',local:'sinshe-hazards',route:'/hazard-risk'},
   {key:'jsa',label:'Digital JSA',table:'jsa_assessments',local:'sinshe-jsa-assessments',route:'/digital-jsa'},
   {key:'briefing',label:'Safety Briefing',table:'safety_sessions',local:'sinshe-safety-sessions',route:'/safety-briefing'},
+  {key:'audit',label:'Audit Finding',table:'audit_findings',local:'sinshe-audit-findings',route:'/audit-management'},
+  {key:'document',label:'Document & Evidence',table:'evidence_documents',local:'sinshe-evidence-documents',route:'/document-evidence'},
 ]
 
 const pick=(row,...keys)=>{for(const key of keys){const value=row?.[key];if(value!==undefined&&value!==null&&value!=='')return value}return''}
@@ -30,207 +32,53 @@ const cleanDate=value=>value?String(value).slice(0,10):''
 const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d}
 function safeRead(key){try{const raw=localStorage.getItem(key);const rows=raw?JSON.parse(raw):[];return Array.isArray(rows)?rows:[]}catch{return[]}}
 function safeWrite(key,rows){try{localStorage.setItem(key,JSON.stringify(rows))}catch{}}
-function daysUntil(value){
-  if(!value)return null
-  const raw=String(value)
-  const d=raw.includes('T')?new Date(raw):new Date(`${raw.slice(0,10)}T00:00:00`)
-  if(Number.isNaN(d.getTime()))return null
-  d.setHours(0,0,0,0)
-  return Math.round((d-today())/86400000)
-}
+function daysUntil(value){if(!value)return null;const raw=String(value);const d=raw.includes('T')?new Date(raw):new Date(`${raw.slice(0,10)}T00:00:00`);if(Number.isNaN(d.getTime()))return null;d.setHours(0,0,0,0);return Math.round((d-today())/86400000)}
 function fmt(value){const date=cleanDate(value);return date?new Intl.DateTimeFormat('id-ID',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(`${date}T00:00:00`)):'-'}
-function urgency(days){
-  if(days<0)return{level:'Critical',tone:'red',text:`${Math.abs(days)} hari overdue`}
-  if(days<=7)return{level:'Critical',tone:'red',text:days===0?'Jatuh tempo hari ini':`${days} hari lagi`}
-  if(days<=30)return{level:'High',tone:'orange',text:`${days} hari lagi`}
-  if(days<=60)return{level:'Medium',tone:'blue',text:`${days} hari lagi`}
-  return{level:'Low',tone:'green',text:`${days} hari lagi`}
-}
+function urgency(days){if(days<0)return{level:'Critical',tone:'red',text:`${Math.abs(days)} hari overdue`};if(days<=7)return{level:'Critical',tone:'red',text:days===0?'Jatuh tempo hari ini':`${days} hari lagi`};if(days<=30)return{level:'High',tone:'orange',text:`${days} hari lagi`};if(days<=60)return{level:'Medium',tone:'blue',text:`${days} hari lagi`};return{level:'Low',tone:'green',text:`${days} hari lagi`}}
 function reminderId(source,recordId,type){return `${source}:${recordId}:${type}`.replace(/\s+/g,'-')}
-function makeReminder({source,sourceLabel,route,recordId,companyCode,unit,type,title,detail,owner,dueDate}){
-  const days=daysUntil(dueDate);if(days===null)return null
-  return{id:reminderId(source,recordId,type),source,sourceLabel,route,recordId:String(recordId||''),companyCode:String(companyCode||''),unit:String(unit||'Head Office'),type,title:String(title||recordId||'Reminder'),detail:String(detail||''),owner:String(owner||''),dueDate:cleanDate(dueDate),days,...urgency(days)}
-}
-function isDone(value){return['closed','completed','cancelled','compliant','archived'].includes(String(value||'').toLowerCase())}
+function makeReminder({source,sourceLabel,route,recordId,companyCode,unit,type,title,detail,owner,dueDate}){const days=daysUntil(dueDate);if(days===null)return null;return{id:reminderId(source,recordId,type),source,sourceLabel,route,recordId:String(recordId||''),companyCode:String(companyCode||''),unit:String(unit||'Head Office'),type,title:String(title||recordId||'Reminder'),detail:String(detail||''),owner:String(owner||''),dueDate:cleanDate(dueDate),days,...urgency(days)}}
+function isDone(value){return['closed','completed','cancelled','compliant','archived','superseded'].includes(String(value||'').toLowerCase())}
 function actionFromDb(r){return{id:r.id,companyCode:r.company_code||'',unit:r.unit||'Head Office',source:r.source,recordId:r.source_record_id,reminderType:r.reminder_type,actionStatus:r.action_status||'Active',snoozedUntil:r.snoozed_until||'',note:r.note||''}}
 function actionToDb(a){return{id:a.id,company_code:a.companyCode||null,unit:a.unit||'Head Office',source:a.source,source_record_id:a.recordId,reminder_type:a.reminderType,action_status:a.actionStatus,snoozed_until:a.snoozedUntil||null,note:a.note||null}}
-function effectiveState(action){
-  if(!action)return'Active'
-  if(action.actionStatus==='Acknowledged')return'Acknowledged'
-  if(action.actionStatus==='Snoozed'&&action.snoozedUntil&&daysUntil(action.snoozedUntil)>=0)return'Snoozed'
-  return'Active'
-}
+function effectiveState(action){if(!action)return'Active';if(action.actionStatus==='Acknowledged')return'Acknowledged';if(action.actionStatus==='Snoozed'&&action.snoozedUntil&&daysUntil(action.snoozedUntil)>=0)return'Snoozed';return'Active'}
 function addDays(days){const d=today();d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
 
 function buildReminders(source,rows){
-  const out=[]
-  const add=data=>{const item=makeReminder(data);if(item)out.push(item)}
+  const out=[];const add=data=>{const item=makeReminder(data);if(item)out.push(item)}
   rows.forEach(r=>{
-    const companyCode=pick(r,'companyCode','company_code')
-    const unit=pick(r,'unit')||'Head Office'
-    const id=pick(r,'id')
-    if(!id)return
-
-    if(source.key==='corrective'){
-      const status=pick(r,'status');const due=pick(r,'dueDate','due_date');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Corrective Action Due',title:pick(r,'title'),detail:`Priority ${pick(r,'priority')||'-'} • Status ${status||'-'}`,owner:pick(r,'pic'),dueDate:due})
-    }
-
-    if(source.key==='ptw'){
-      const status=pick(r,'status');const due=pick(r,'endDate','end_at');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Permit Expiry',title:pick(r,'title'),detail:`${pick(r,'permit_type','type')||'PTW'} • ${pick(r,'area')||'-'} • Status ${status||'-'}`,owner:pick(r,'supervisor','requester'),dueDate:due})
-    }
-
-    if(source.key==='asset'&&String(pick(r,'operational')).toLowerCase()!=='retired'){
-      const assetName=pick(r,'name')||id;const owner=pick(r,'owner')
-      ;[
-        ['Riksa Uji Due',pick(r,'riksaDue','riksa_due')],
-        ['SIO Due',pick(r,'sioDue','sio_due')],
-        ['SILO Due',pick(r,'siloDue','silo_due')],
-        ['Calibration Due',pick(r,'calibrationDue','calibration_due')],
-      ].forEach(([type,due])=>{if(due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type,title:assetName,detail:`${pick(r,'category')||'Asset'} • ${pick(r,'serial')||'No serial'}`,owner,dueDate:due})})
-    }
-
-    if(source.key==='compliance'){
-      const status=pick(r,'status');const due=pick(r,'dueDate','due_date');if(String(status).toLowerCase()!=='compliant'&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Compliance Due',title:pick(r,'obligation'),detail:`${pick(r,'regulation')||'-'} • ${pick(r,'priority')||'-'} • ${status||'-'}`,owner:pick(r,'owner'),dueDate:due})
-    }
-
-    if(source.key==='learning'){
-      const due=pick(r,'validUntil','valid_until');const mandatory=pick(r,'mandatory');if(due&&mandatory!==false)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Training / Certification Expiry',title:`${pick(r,'employeeName','employee_name')||'Employee'} · ${pick(r,'trainingName','training_name')||'Training'}`,detail:`${pick(r,'category')||'-'} • ${pick(r,'certificateNo','certificate_no')||'No certificate'}`,owner:pick(r,'employeeName','employee_name'),dueDate:due})
-    }
-
-    if(source.key==='hazard'){
-      const status=pick(r,'status');if(!isDone(status)){
-        const title=pick(r,'title')||pick(r,'activity')||id;const owner=pick(r,'owner')
-        const due=pick(r,'dueDate','due_date');if(due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Risk Action Due',title,detail:`${pick(r,'assessmentType','assessment_type')||'Risk'} • ${status||'-'}`,owner,dueDate:due})
-        const review=pick(r,'reviewDate','review_date');if(review)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Hazard Review',title,detail:`Review ${pick(r,'jsaNo','jsa_no')||id} • ${status||'-'}`,owner,dueDate:review})
-      }
-    }
-
-    if(source.key==='jsa'){
-      const status=pick(r,'status');const due=pick(r,'validUntil','valid_until');if(String(status).toLowerCase()==='approved'&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'JSA Validity',title:pick(r,'title'),detail:`${pick(r,'jobType','job_type')||'JSA'} • ${pick(r,'location')||'-'}`,owner:pick(r,'supervisor'),dueDate:due})
-    }
-
-    if(source.key==='briefing'){
-      const status=pick(r,'status');const due=pick(r,'date','session_date');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Safety Session',title:pick(r,'title'),detail:`${pick(r,'type','session_type')||'Session'} • ${pick(r,'location')||'-'} • ${status||'-'}`,owner:pick(r,'facilitator'),dueDate:due})
-    }
+    const companyCode=pick(r,'companyCode','company_code');const unit=pick(r,'unit')||'Head Office';const id=pick(r,'id');if(!id)return
+    if(source.key==='corrective'){const status=pick(r,'status'),due=pick(r,'dueDate','due_date');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Corrective Action Due',title:pick(r,'title'),detail:`Priority ${pick(r,'priority')||'-'} • Status ${status||'-'}`,owner:pick(r,'pic'),dueDate:due})}
+    if(source.key==='ptw'){const status=pick(r,'status'),due=pick(r,'endDate','end_at');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Permit Expiry',title:pick(r,'title'),detail:`${pick(r,'permit_type','type')||'PTW'} • ${pick(r,'area')||'-'} • Status ${status||'-'}`,owner:pick(r,'supervisor','requester'),dueDate:due})}
+    if(source.key==='asset'&&String(pick(r,'operational')).toLowerCase()!=='retired'){const assetName=pick(r,'name')||id,owner=pick(r,'owner');[['Riksa Uji Due',pick(r,'riksaDue','riksa_due')],['SIO Due',pick(r,'sioDue','sio_due')],['SILO Due',pick(r,'siloDue','silo_due')],['Calibration Due',pick(r,'calibrationDue','calibration_due')]].forEach(([type,due])=>{if(due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type,title:assetName,detail:`${pick(r,'category')||'Asset'} • ${pick(r,'serial')||'No serial'}`,owner,dueDate:due})})}
+    if(source.key==='compliance'){const status=pick(r,'status'),due=pick(r,'dueDate','due_date');if(String(status).toLowerCase()!=='compliant'&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Compliance Due',title:pick(r,'obligation'),detail:`${pick(r,'regulation')||'-'} • ${pick(r,'priority')||'-'} • ${status||'-'}`,owner:pick(r,'owner'),dueDate:due})}
+    if(source.key==='learning'){const due=pick(r,'validUntil','valid_until'),mandatory=pick(r,'mandatory');if(due&&mandatory!==false)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Training / Certification Expiry',title:`${pick(r,'employeeName','employee_name')||'Employee'} · ${pick(r,'trainingName','training_name')||'Training'}`,detail:`${pick(r,'category')||'-'} • ${pick(r,'certificateNo','certificate_no')||'No certificate'}`,owner:pick(r,'employeeName','employee_name'),dueDate:due})}
+    if(source.key==='hazard'){const status=pick(r,'status');if(!isDone(status)){const title=pick(r,'title')||pick(r,'activity')||id,owner=pick(r,'owner'),due=pick(r,'dueDate','due_date'),review=pick(r,'reviewDate','review_date');if(due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Risk Action Due',title,detail:`${pick(r,'assessmentType','assessment_type')||'Risk'} • ${status||'-'}`,owner,dueDate:due});if(review)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Hazard Review',title,detail:`Review ${pick(r,'jsaNo','jsa_no')||id} • ${status||'-'}`,owner,dueDate:review})}}
+    if(source.key==='jsa'){const status=pick(r,'status'),due=pick(r,'validUntil','valid_until');if(String(status).toLowerCase()==='approved'&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'JSA Validity',title:pick(r,'title'),detail:`${pick(r,'jobType','job_type')||'JSA'} • ${pick(r,'location')||'-'}`,owner:pick(r,'supervisor'),dueDate:due})}
+    if(source.key==='briefing'){const status=pick(r,'status'),due=pick(r,'date','session_date');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Safety Session',title:pick(r,'title'),detail:`${pick(r,'type','session_type')||'Session'} • ${pick(r,'location')||'-'} • ${status||'-'}`,owner:pick(r,'facilitator'),dueDate:due})}
+    if(source.key==='audit'){const status=pick(r,'status'),due=pick(r,'dueDate','due_date');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Audit Finding Due',title:pick(r,'finding')||id,detail:`${pick(r,'findingType','finding_type')||'Finding'} • Clause ${pick(r,'clause')||'-'} • ${status||'-'}`,owner:pick(r,'pic'),dueDate:due})}
+    if(source.key==='document'){const status=pick(r,'status'),due=pick(r,'validUntil','valid_until');if(!isDone(status)&&due)add({source:source.key,sourceLabel:source.label,route:source.route,recordId:id,companyCode,unit,type:'Document Validity',title:pick(r,'title')||pick(r,'fileName','file_name')||id,detail:`${pick(r,'documentType','document_type')||'Document'} • ${pick(r,'module')||'-'} • ${pick(r,'referenceNo','reference_no')||'No reference'}`,owner:'Document Owner',dueDate:due})}
   })
   return out
 }
 
 export default function ReminderEngine(){
-  const [sourceRows,setSourceRows]=useState({})
-  const [actions,setActions]=useState([])
-  const [filters,setFilters]=useState(DEFAULT_COMPANY_FILTERS)
-  const [search,setSearch]=useState('')
-  const [sourceFilter,setSourceFilter]=useState('All')
-  const [urgencyFilter,setUrgencyFilter]=useState('All')
-  const [stateFilter,setStateFilter]=useState('Active')
-  const [horizon,setHorizon]=useState('60')
-  const [loading,setLoading]=useState(true)
-  const [sourceLabel,setSourceLabel]=useState('Loading…')
-  const [notice,setNotice]=useState('')
-  const profile=getStoredProfile()
-  const canManage=!profile||profile.role!=='Viewer'
-
-  async function load(){
-    setLoading(true)
-    let centralCount=0
-    const result={}
-    await Promise.all(SOURCES.map(async source=>{
-      const local=typeof window==='undefined'?[]:safeRead(source.local)
-      if(isSupabaseConfigured()){
-        try{const central=await dbSelect(source.table,'select=*');result[source.key]=Array.isArray(central)?central:[];centralCount++;return}catch{}
-      }
-      result[source.key]=local
-    }))
-    let nextActions=typeof window==='undefined'?[]:safeRead(ACTION_KEY)
-    if(isSupabaseConfigured()){
-      try{const centralActions=await dbSelect('reminder_actions','select=*&order=updated_at.desc');nextActions=(centralActions||[]).map(actionFromDb);centralCount++}catch{}
-    }
-    setSourceRows(result);setActions(nextActions);safeWrite(ACTION_KEY,nextActions)
-    setSourceLabel(`${centralCount}/${SOURCES.length+1} central source connected`);setLoading(false)
-  }
-
+  const [sourceRows,setSourceRows]=useState({});const [actions,setActions]=useState([]);const [filters,setFilters]=useState(DEFAULT_COMPANY_FILTERS);const [search,setSearch]=useState('');const [sourceFilter,setSourceFilter]=useState('All');const [urgencyFilter,setUrgencyFilter]=useState('All');const [stateFilter,setStateFilter]=useState('Active');const [horizon,setHorizon]=useState('60');const [loading,setLoading]=useState(true);const [sourceLabel,setSourceLabel]=useState('Loading…');const [notice,setNotice]=useState('')
+  const profile=getStoredProfile();const canManage=!profile||profile.role!=='Viewer'
+  async function load(){setLoading(true);let centralCount=0;const result={};await Promise.all(SOURCES.map(async source=>{const local=typeof window==='undefined'?[]:safeRead(source.local);if(isSupabaseConfigured()){try{const central=await dbSelect(source.table,'select=*');result[source.key]=Array.isArray(central)?central:[];centralCount++;return}catch{}}result[source.key]=local}));let nextActions=typeof window==='undefined'?[]:safeRead(ACTION_KEY);if(isSupabaseConfigured()){try{const centralActions=await dbSelect('reminder_actions','select=*&order=updated_at.desc');nextActions=(centralActions||[]).map(actionFromDb);centralCount++}catch{}}setSourceRows(result);setActions(nextActions);safeWrite(ACTION_KEY,nextActions);setSourceLabel(`${centralCount}/${SOURCES.length+1} central source connected`);setLoading(false)}
   useEffect(()=>{load()},[])
-
-  const allReminders=useMemo(()=>SOURCES.flatMap(source=>buildReminders(source,sourceRows[source.key]||[])),[sourceRows])
-  const actionMap=useMemo(()=>new Map(actions.map(a=>[a.id,a])),[actions])
-  const companies=useMemo(()=>filteredCompanies(filters),[filters])
-  const allowed=useMemo(()=>new Set(companies.map(c=>c.code)),[companies])
-  const specific=filters.company!=='All'||filters.region!=='All'||filters.province!=='All'||filters.pic!=='All'
-  const scoped=useMemo(()=>allReminders.filter(r=>{const code=companyCodeOf(r);return code?allowed.has(code):!specific}),[allReminders,allowed,specific])
-  const decorated=useMemo(()=>scoped.map(r=>({...r,state:effectiveState(actionMap.get(r.id)),action:actionMap.get(r.id)||null})),[scoped,actionMap])
-
-  const rows=useMemo(()=>decorated.filter(r=>{
-    const q=search.trim().toLowerCase()
-    const matchesSearch=!q||[r.recordId,r.companyCode,r.sourceLabel,r.type,r.title,r.detail,r.owner,r.unit].join(' ').toLowerCase().includes(q)
-    const within=horizon==='All'||r.days<0||r.days<=Number(horizon)
-    return matchesSearch&&within&&(sourceFilter==='All'||r.source===sourceFilter)&&(urgencyFilter==='All'||r.level===urgencyFilter)&&(stateFilter==='All'||r.state===stateFilter)
-  }).sort((a,b)=>a.days-b.days||a.sourceLabel.localeCompare(b.sourceLabel)),[decorated,search,horizon,sourceFilter,urgencyFilter,stateFilter])
-
-  const active=decorated.filter(r=>r.state==='Active')
-  const overdue=active.filter(r=>r.days<0).length
-  const due7=active.filter(r=>r.days>=0&&r.days<=7).length
-  const snoozed=decorated.filter(r=>r.state==='Snoozed').length
-  const acknowledged=decorated.filter(r=>r.state==='Acknowledged').length
-  const sourceCounts=useMemo(()=>SOURCES.map(s=>({label:s.label,count:active.filter(r=>r.source===s.key&&r.days<=60).length})),[active])
-
+  const allReminders=useMemo(()=>SOURCES.flatMap(source=>buildReminders(source,sourceRows[source.key]||[])),[sourceRows]);const actionMap=useMemo(()=>new Map(actions.map(a=>[a.id,a])),[actions]);const companies=useMemo(()=>filteredCompanies(filters),[filters]);const allowed=useMemo(()=>new Set(companies.map(c=>c.code)),[companies]);const specific=filters.company!=='All'||filters.region!=='All'||filters.province!=='All'||filters.pic!=='All';const scoped=useMemo(()=>allReminders.filter(r=>{const code=companyCodeOf(r);return code?allowed.has(code):!specific}),[allReminders,allowed,specific]);const decorated=useMemo(()=>scoped.map(r=>({...r,state:effectiveState(actionMap.get(r.id)),action:actionMap.get(r.id)||null})),[scoped,actionMap])
+  const rows=useMemo(()=>decorated.filter(r=>{const q=search.trim().toLowerCase();const matchesSearch=!q||[r.recordId,r.companyCode,r.sourceLabel,r.type,r.title,r.detail,r.owner,r.unit].join(' ').toLowerCase().includes(q);const within=horizon==='All'||r.days<0||r.days<=Number(horizon);return matchesSearch&&within&&(sourceFilter==='All'||r.source===sourceFilter)&&(urgencyFilter==='All'||r.level===urgencyFilter)&&(stateFilter==='All'||r.state===stateFilter)}).sort((a,b)=>a.days-b.days||a.sourceLabel.localeCompare(b.sourceLabel)),[decorated,search,horizon,sourceFilter,urgencyFilter,stateFilter])
+  const active=decorated.filter(r=>r.state==='Active'),overdue=active.filter(r=>r.days<0).length,due7=active.filter(r=>r.days>=0&&r.days<=7).length,snoozed=decorated.filter(r=>r.state==='Snoozed').length,acknowledged=decorated.filter(r=>r.state==='Acknowledged').length;const sourceCounts=useMemo(()=>SOURCES.map(s=>({label:s.label,count:active.filter(r=>r.source===s.key&&r.days<=60).length})),[active])
   function flash(text){setNotice(text);setTimeout(()=>setNotice(''),3400)}
-  async function saveAction(reminder,actionStatus,snoozedUntil=''){
-    if(!canManage){flash('Role Viewer hanya dapat melihat reminder.');return}
-    const item={id:reminder.id,companyCode:reminder.companyCode,unit:reminder.unit,source:reminder.source,recordId:reminder.recordId,reminderType:reminder.type,actionStatus,snoozedUntil,note:''}
-    const next=actions.some(a=>a.id===item.id)?actions.map(a=>a.id===item.id?item:a):[item,...actions]
-    setActions(next);safeWrite(ACTION_KEY,next)
-    if(isSupabaseConfigured()){
-      try{await dbUpsert('reminder_actions',[actionToDb(item)],'id');flash(actionStatus==='Acknowledged'?'Reminder di-acknowledge.':actionStatus==='Snoozed'?`Reminder di-snooze sampai ${fmt(snoozedUntil)}.`:'Reminder diaktifkan kembali.');return}catch(err){flash(`Tersimpan lokal, sync central gagal: ${err.message}`);return}
-    }
-    flash('Reminder action tersimpan lokal.')
-  }
-  function exportCSV(){
-    const header=['Source','Record ID','Company/PT','Unit','Reminder Type','Title','Detail','Owner/PIC','Due Date','Days','Urgency','State']
-    const data=rows.map(r=>[r.sourceLabel,r.recordId,r.companyCode,r.unit,r.type,r.title,r.detail,r.owner,r.dueDate,r.days,r.level,r.state])
-    const csv=[header,...data].map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n')
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`SINSHE_Reminder_Engine_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url)
-  }
+  async function saveAction(reminder,actionStatus,snoozedUntil=''){if(!canManage){flash('Role Viewer hanya dapat melihat reminder.');return};const item={id:reminder.id,companyCode:reminder.companyCode,unit:reminder.unit,source:reminder.source,recordId:reminder.recordId,reminderType:reminder.type,actionStatus,snoozedUntil,note:''};const next=actions.some(a=>a.id===item.id)?actions.map(a=>a.id===item.id?item:a):[item,...actions];setActions(next);safeWrite(ACTION_KEY,next);if(isSupabaseConfigured()){try{await dbUpsert('reminder_actions',[actionToDb(item)],'id');flash(actionStatus==='Acknowledged'?'Reminder di-acknowledge.':actionStatus==='Snoozed'?`Reminder di-snooze sampai ${fmt(snoozedUntil)}.`:'Reminder diaktifkan kembali.');return}catch(err){flash(`Tersimpan lokal, sync central gagal: ${err.message}`);return}}flash('Reminder action tersimpan lokal.')}
+  function exportCSV(){const header=['Source','Record ID','Company/PT','Unit','Reminder Type','Title','Detail','Owner/PIC','Due Date','Days','Urgency','State'];const data=rows.map(r=>[r.sourceLabel,r.recordId,r.companyCode,r.unit,r.type,r.title,r.detail,r.owner,r.dueDate,r.days,r.level,r.state]);const csv=[header,...data].map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`SINSHE_Reminder_Engine_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url)}
 
-  return <Shell title="Reminder Engine" subtitle="Satu pusat early warning untuk due date, expiry, compliance, risk review dan validitas dokumen lintas modul.">
+  return <Shell title="Reminder Engine" subtitle="Satu pusat early warning untuk due date, expiry, compliance, audit finding, risk review dan validitas dokumen lintas modul.">
     <CompanyScopeBar filters={filters} onChange={setFilters} onReset={()=>setFilters(DEFAULT_COMPANY_FILTERS)}/>
     {notice&&<div className={styles.notice}><CheckCircle2 size={18}/>{notice}</div>}
-
-    <div className="stats-grid four">
-      <StatCard label="Active Reminder" value={active.length} hint={`${sourceLabel}`} tone="blue" icon={<Bell/>}/>
-      <StatCard label="Overdue" value={overdue} hint="perlu tindakan segera" tone="red" icon={<AlertTriangle/>}/>
-      <StatCard label="Due ≤7 Hari" value={due7} hint="critical window" tone="orange" icon={<Clock3/>}/>
-      <StatCard label="Snoozed / Ack" value={`${snoozed} / ${acknowledged}`} hint="reminder action state" tone="purple" icon={<TimerReset/>}/>
-    </div>
-
-    <div className={styles.toolbar}><div><h2>Central Reminder Queue</h2><p>Engine membaca deadline aktual dari 8 modul dan tidak membuat due date dummy.</p></div><div className={styles.actions}><button className={styles.secondary} onClick={load} disabled={loading}><RefreshCw size={17}/>{loading?' Refreshing…':' Refresh'}</button><button className={styles.secondary} onClick={exportCSV}><Download size={17}/> Export CSV</button></div></div>
-
-    <Panel>
-      <div className={styles.filters}>
-        <label className={styles.search}><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari record, PT, reminder, PIC, unit..."/></label>
-        <select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)}><option value="All">All Modules</option>{SOURCES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select>
-        <select value={urgencyFilter} onChange={e=>setUrgencyFilter(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select>
-        <select value={stateFilter} onChange={e=>setStateFilter(e.target.value)}><option>Active</option><option>Snoozed</option><option>Acknowledged</option><option>All</option></select>
-        <select value={horizon} onChange={e=>setHorizon(e.target.value)}><option value="7">7 Hari</option><option value="30">30 Hari</option><option value="60">60 Hari</option><option value="All">All Due Dates</option></select>
-      </div>
-      <div className="table-wrap"><table><thead><tr><th>Urgency</th><th>Module / Record</th><th>PT</th><th>Reminder</th><th>Owner / PIC</th><th>Due</th><th>State</th><th>Aksi</th></tr></thead><tbody>
-        {rows.map(r=><tr key={r.id} className={r.days<0?styles.overdueRow:''}>
-          <td><Badge tone={r.tone}>{r.level}</Badge><small className={styles.block}>{r.text}</small></td>
-          <td><b>{r.sourceLabel}</b><small className={styles.block}>{r.recordId} • {r.unit}</small></td>
-          <td><b>{r.companyCode||'-'}</b></td>
-          <td><b>{r.type}</b><small className={styles.blockStrong}>{r.title}</small><small className={styles.block}>{r.detail||'-'}</small></td>
-          <td>{r.owner||'-'}</td>
-          <td><b className={r.days<0?styles.overdueText:''}>{fmt(r.dueDate)}</b><small className={styles.block}>{r.text}</small></td>
-          <td><Badge tone={r.state==='Active'?'orange':r.state==='Snoozed'?'blue':'green'}>{r.state}</Badge>{r.state==='Snoozed'&&r.action?.snoozedUntil&&<small className={styles.block}>until {fmt(r.action.snoozedUntil)}</small>}</td>
-          <td><div className={styles.rowActions}><Link href={r.route} className={styles.openBtn}><ExternalLink size={14}/> Open</Link>{canManage&&r.state==='Active'&&<><button className={styles.snoozeBtn} onClick={()=>saveAction(r,'Snoozed',addDays(7))}><TimerReset size={14}/> 7d</button><button className={styles.ackBtn} onClick={()=>saveAction(r,'Acknowledged')}><CheckCircle2 size={14}/> Ack</button></>}{canManage&&r.state!=='Active'&&<button className={styles.resetBtn} onClick={()=>saveAction(r,'Active')}><Undo2 size={14}/> Reactivate</button>}</div></td>
-        </tr>)}
-        {!rows.length&&<tr><td colSpan="8" className={styles.empty}>{loading?'Memuat reminder…':'Tidak ada reminder sesuai filter dan horizon.'}</td></tr>}
-      </tbody></table></div>
-    </Panel>
-
-    <div className="dashboard-split mt">
-      <Panel title="Reminder Coverage · 60 Hari"><div className={styles.coverage}>{sourceCounts.map(item=><div key={item.label}><span>{item.label}</span><b>{item.count}</b></div>)}</div></Panel>
-      <Panel title="Escalation Logic"><div className={styles.logic}><div><Badge tone="red">Critical</Badge><span>Overdue atau jatuh tempo ≤7 hari</span></div><div><Badge tone="orange">High</Badge><span>8–30 hari</span></div><div><Badge tone="blue">Medium</Badge><span>31–60 hari</span></div><div><Badge tone="green">Low</Badge><span>&gt;60 hari, tampil pada All Due Dates</span></div></div><div className={styles.info}><Bell size={18}/><span><b>Reminder Engine membaca data aktual.</b> Jika suatu record tidak memiliki due date / expiry, engine tidak membuat tanggal asumsi.</span></div></Panel>
-    </div>
+    <div className="stats-grid four"><StatCard label="Active Reminder" value={active.length} hint={sourceLabel} tone="blue" icon={<Bell/>}/><StatCard label="Overdue" value={overdue} hint="perlu tindakan segera" tone="red" icon={<AlertTriangle/>}/><StatCard label="Due ≤7 Hari" value={due7} hint="critical window" tone="orange" icon={<Clock3/>}/><StatCard label="Snoozed / Ack" value={`${snoozed} / ${acknowledged}`} hint="reminder action state" tone="purple" icon={<TimerReset/>}/></div>
+    <div className={styles.toolbar}><div><h2>Central Reminder Queue</h2><p>Engine membaca deadline aktual dari {SOURCES.length} sumber data dan tidak membuat due date dummy.</p></div><div className={styles.actions}><button className={styles.secondary} onClick={load} disabled={loading}><RefreshCw size={17}/>{loading?' Refreshing…':' Refresh'}</button><button className={styles.secondary} onClick={exportCSV}><Download size={17}/> Export CSV</button></div></div>
+    <Panel><div className={styles.filters}><label className={styles.search}><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari record, PT, reminder, PIC, unit..."/></label><select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)}><option value="All">All Modules</option>{SOURCES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select><select value={urgencyFilter} onChange={e=>setUrgencyFilter(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select><select value={stateFilter} onChange={e=>setStateFilter(e.target.value)}><option>Active</option><option>Snoozed</option><option>Acknowledged</option><option>All</option></select><select value={horizon} onChange={e=>setHorizon(e.target.value)}><option value="7">7 Hari</option><option value="30">30 Hari</option><option value="60">60 Hari</option><option value="All">All Due Dates</option></select></div><div className="table-wrap"><table><thead><tr><th>Urgency</th><th>Module / Record</th><th>PT</th><th>Reminder</th><th>Owner / PIC</th><th>Due</th><th>State</th><th>Aksi</th></tr></thead><tbody>{rows.map(r=><tr key={r.id} className={r.days<0?styles.overdueRow:''}><td><Badge tone={r.tone}>{r.level}</Badge><small className={styles.block}>{r.text}</small></td><td><b>{r.sourceLabel}</b><small className={styles.block}>{r.recordId} • {r.unit}</small></td><td><b>{r.companyCode||'-'}</b></td><td><b>{r.type}</b><small className={styles.blockStrong}>{r.title}</small><small className={styles.block}>{r.detail||'-'}</small></td><td>{r.owner||'-'}</td><td><b className={r.days<0?styles.overdueText:''}>{fmt(r.dueDate)}</b><small className={styles.block}>{r.text}</small></td><td><Badge tone={r.state==='Active'?'orange':r.state==='Snoozed'?'blue':'green'}>{r.state}</Badge>{r.state==='Snoozed'&&r.action?.snoozedUntil&&<small className={styles.block}>until {fmt(r.action.snoozedUntil)}</small>}</td><td><div className={styles.rowActions}><Link href={r.route} className={styles.openBtn}><ExternalLink size={14}/> Open</Link>{canManage&&r.state==='Active'&&<><button className={styles.snoozeBtn} onClick={()=>saveAction(r,'Snoozed',addDays(7))}><TimerReset size={14}/> 7d</button><button className={styles.ackBtn} onClick={()=>saveAction(r,'Acknowledged')}><CheckCircle2 size={14}/> Ack</button></>}{canManage&&r.state!=='Active'&&<button className={styles.resetBtn} onClick={()=>saveAction(r,'Active')}><Undo2 size={14}/> Reactivate</button>}</div></td></tr>)}{!rows.length&&<tr><td colSpan="8" className={styles.empty}>{loading?'Memuat reminder…':'Tidak ada reminder sesuai filter dan horizon.'}</td></tr>}</tbody></table></div></Panel>
+    <div className="dashboard-split mt"><Panel title="Reminder Coverage · 60 Hari"><div className={styles.coverage}>{sourceCounts.map(item=><div key={item.label}><span>{item.label}</span><b>{item.count}</b></div>)}</div></Panel><Panel title="Escalation Logic"><div className={styles.logic}><div><Badge tone="red">Critical</Badge><span>Overdue atau jatuh tempo ≤7 hari</span></div><div><Badge tone="orange">High</Badge><span>8–30 hari</span></div><div><Badge tone="blue">Medium</Badge><span>31–60 hari</span></div><div><Badge tone="green">Low</Badge><span>&gt;60 hari, tampil pada All Due Dates</span></div></div><div className={styles.info}><Bell size={18}/><span><b>Reminder Engine membaca data aktual.</b> Audit finding dan document validity sekarang ikut masuk queue. Record tanpa due date / expiry tidak diberi tanggal asumsi.</span></div></Panel></div>
   </Shell>
 }
