@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, FileCheck2,
   GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
-  ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Wrench, X
+  ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { canAccess, getSessionRole, roles, setSessionRole } from '../lib/access'
@@ -27,6 +27,7 @@ const groups = [
   {
     title: 'HSE OPERATIONS',
     items: [
+      { href: '/safety-briefing', label: 'Safety Briefing & Induction', icon: Users },
       { href: '/learning-competency', label: 'Learning & Competency', icon: GraduationCap },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
