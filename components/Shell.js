@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch,
+  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch, FolderOpen,
   GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
@@ -43,6 +43,7 @@ const groups = [
       { href: '/asset-integrity', label: 'Asset Integrity Management', icon: Wrench },
       { href: '/regulatory-compliance', label: 'Regulatory Compliance', icon: FileCheck2 },
       { href: '/audit-management', label: 'Audit Management', icon: ClipboardList },
+      { href: '/document-evidence', label: 'Document & Evidence', icon: FolderOpen },
     ],
   },
   {
