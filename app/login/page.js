@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, LockKeyhole, ShieldCheck } from 'lucide-react'
 import { getCurrentUser, getMyProfile, isSupabaseConfigured, signInWithPassword, signOut } from '../../lib/supabase-rest'
 import { roles, setSessionRole } from '../../lib/access'
@@ -9,7 +9,6 @@ import styles from './login.module.css'
 
 export default function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -21,6 +20,9 @@ export default function LoginPage() {
   useEffect(() => {
     let mounted = true
     async function checkSession() {
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('reason') === 'inactive') {
+        setMessage('Akun kamu sedang nonaktif. Hubungi administrator SINSHE.')
+      }
       if (!configured) {
         if (mounted) setChecking(false)
         return
@@ -40,10 +42,6 @@ export default function LoginPage() {
     checkSession()
     return () => { mounted = false }
   }, [configured, router])
-
-  useEffect(() => {
-    if (searchParams.get('reason') === 'inactive') setMessage('Akun kamu sedang nonaktif. Hubungi administrator SINSHE.')
-  }, [searchParams])
 
   async function handleSubmit(e) {
     e.preventDefault()

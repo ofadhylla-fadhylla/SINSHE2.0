@@ -105,14 +105,7 @@ export default function Shell({ children, title, subtitle }) {
     }
 
     loadIdentity()
-    const refresh = () => loadIdentity()
-    window.addEventListener('sinshe-auth-change', refresh)
-    window.addEventListener('sinshe-profile-change', refresh)
-    return () => {
-      active = false
-      window.removeEventListener('sinshe-auth-change', refresh)
-      window.removeEventListener('sinshe-profile-change', refresh)
-    }
+    return () => { active = false }
   }, [configured, router])
 
   function changeRole(nextRole) {
