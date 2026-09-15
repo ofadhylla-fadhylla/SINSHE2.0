@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, LockKeyhole, ShieldCheck } from 'lucide-react'
-import { getCurrentUser, getMyProfile, isSupabaseConfigured, signInWithPassword, signOut } from '../../lib/supabase-rest'
+import {
+  getCurrentUser, getMyProfile, isSupabaseConfigured, provisionInitialAdmin,
+  signInWithPassword, signOut
+} from '../../lib/supabase-rest'
 import { roles, setSessionRole } from '../../lib/access'
 import styles from './login.module.css'
 
@@ -43,31 +46,43 @@ export default function LoginPage() {
     return () => { mounted = false }
   }, [configured, router])
 
+  async function completeLogin() {
+    const user = await getCurrentUser()
+    const profile = await getMyProfile(user)
+    if (!profile) throw new Error('Profil user belum tersedia di database.')
+    if (profile.active === false) {
+      await signOut()
+      throw new Error('Akun ini sedang dinonaktifkan.')
+    }
+    const role = roles.includes(profile.role) ? profile.role : 'Viewer'
+    setSessionRole(role)
+    router.replace('/')
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setMessage('')
-    if (!email.trim() || !password) {
+    const normalizedEmail = email.trim().toLowerCase()
+
+    if (!normalizedEmail || !password) {
       setMessage('Masukkan email dan password.')
       return
     }
     if (!configured) {
-      setMessage('Backend Supabase belum dikonfigurasi di Vercel.')
+      setMessage('Backend Supabase belum dikonfigurasi.')
       return
     }
 
     setLoading(true)
     try {
-      await signInWithPassword(email.trim(), password)
-      const user = await getCurrentUser()
-      const profile = await getMyProfile(user)
-      if (!profile) throw new Error('Profil user belum tersedia di database.')
-      if (profile.active === false) {
-        await signOut()
-        throw new Error('Akun ini sedang dinonaktifkan.')
+      try {
+        await signInWithPassword(normalizedEmail, password)
+      } catch (signInError) {
+        if (!normalizedEmail.endsWith('@sinshe.local')) throw signInError
+        await provisionInitialAdmin(normalizedEmail, password)
+        await signInWithPassword(normalizedEmail, password)
       }
-      const role = roles.includes(profile.role) ? profile.role : 'Viewer'
-      setSessionRole(role)
-      router.replace('/')
+      await completeLogin()
     } catch (error) {
       setMessage(error?.message || 'Login gagal. Periksa email dan password.')
     } finally {
@@ -103,14 +118,14 @@ export default function LoginPage() {
 
           {!configured && <div className={styles.setupNotice}>
             <b>Supabase belum aktif di deployment ini.</b>
-            <span>Source code login sudah siap. Tambahkan Project URL dan Publishable Key ke Environment Variables Vercel untuk mengaktifkan autentikasi.</span>
+            <span>Backend login belum tersambung.</span>
           </div>}
 
           {message && <div className={styles.error}>{message}</div>}
 
           <form onSubmit={handleSubmit} className={styles.form}>
             <label>Email
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nama@kpn.co.id" autoComplete="email" disabled={loading}/>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="nama@sinshe.local" autoComplete="email" disabled={loading}/>
             </label>
             <label>Password
               <div className={styles.passwordWrap}>
