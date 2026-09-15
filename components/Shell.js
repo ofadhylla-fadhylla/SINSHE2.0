@@ -1,14 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck,
-  FileCheck2, LayoutDashboard, ListTodo, Menu, Network, Search, ShieldCheck, Siren,
-  Settings, Wrench, X
+  FileCheck2, LayoutDashboard, ListTodo, LogOut, Menu, Network, Search,
+  ShieldCheck, Siren, Settings, UserCircle2, Wrench, X
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { canAccess, getSessionRole, roles, setSessionRole } from '../lib/access'
+import {
+  getCurrentUser, getMyProfile, getStoredProfile, isSupabaseConfigured,
+  signOut as supabaseSignOut
+} from '../lib/supabase-rest'
 
 const groups = [
   {
@@ -45,12 +49,19 @@ const groups = [
   },
 ]
 
+const initials = value => (value || 'User').split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase()
+
 export default function Shell({ children, title, subtitle }) {
   const path = usePathname()
+  const router = useRouter()
+  const configured = isSupabaseConfigured()
   const [open, setOpen] = useState(false)
   const [role, setRole] = useState('Admin')
+  const [profile, setProfile] = useState(() => getStoredProfile())
+  const [authReady, setAuthReady] = useState(!configured)
 
   useEffect(() => {
+    if (configured) return
     const syncRole = () => setRole(getSessionRole())
     syncRole()
     window.addEventListener('storage', syncRole)
@@ -59,11 +70,69 @@ export default function Shell({ children, title, subtitle }) {
       window.removeEventListener('storage', syncRole)
       window.removeEventListener('sinshe-role-change', syncRole)
     }
-  }, [])
+  }, [configured])
+
+  useEffect(() => {
+    if (!configured) {
+      setAuthReady(true)
+      return
+    }
+
+    let active = true
+    async function loadIdentity() {
+      try {
+        const user = await getCurrentUser()
+        if (!active) return
+        if (!user) {
+          router.replace('/login')
+          return
+        }
+        const nextProfile = await getMyProfile(user)
+        if (!active) return
+        if (!nextProfile || nextProfile.active === false) {
+          await supabaseSignOut()
+          router.replace('/login?reason=inactive')
+          return
+        }
+        const nextRole = roles.includes(nextProfile.role) ? nextProfile.role : 'Viewer'
+        setSessionRole(nextRole)
+        setRole(nextRole)
+        setProfile({ ...nextProfile, email: user.email })
+        setAuthReady(true)
+      } catch {
+        router.replace('/login')
+      }
+    }
+
+    loadIdentity()
+    const refresh = () => loadIdentity()
+    window.addEventListener('sinshe-auth-change', refresh)
+    window.addEventListener('sinshe-profile-change', refresh)
+    return () => {
+      active = false
+      window.removeEventListener('sinshe-auth-change', refresh)
+      window.removeEventListener('sinshe-profile-change', refresh)
+    }
+  }, [configured, router])
 
   function changeRole(nextRole) {
+    if (configured) return
     setSessionRole(nextRole)
     setRole(nextRole)
+  }
+
+  async function handleLogout() {
+    await supabaseSignOut()
+    router.replace('/login')
+  }
+
+  const visibleGroups = useMemo(() => groups.map(group => ({
+    ...group,
+    items: group.items.filter(item => canAccess(role, item.href)),
+  })).filter(group => group.items.length), [role])
+
+  if (!authReady && configured) {
+    return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#f5f7f8',fontWeight:850,color:'#0c5a2b'}}>Memuat sesi SINSHE 2.0…</div>
   }
 
   return (
@@ -80,24 +149,20 @@ export default function Shell({ children, title, subtitle }) {
         </div>
 
         <nav className="nav-list">
-          {groups.map(group => {
-            const visibleItems = group.items.filter(item => canAccess(role, item.href))
-            if (!visibleItems.length) return null
-            return (
-              <div key={group.title}>
-                <div className="nav-section">{group.title}</div>
-                {visibleItems.map(item => {
-                  const Icon = item.icon
-                  const active = path === item.href
-                  return (
-                    <Link key={item.href} href={item.href} className={`nav-item ${active ? 'active' : ''}`} onClick={() => setOpen(false)}>
-                      <Icon size={18}/><span>{item.label}</span>
-                    </Link>
-                  )
-                })}
-              </div>
-            )
-          })}
+          {visibleGroups.map(group => (
+            <div key={group.title}>
+              <div className="nav-section">{group.title}</div>
+              {group.items.map(item => {
+                const Icon = item.icon
+                const active = path === item.href
+                return (
+                  <Link key={item.href} href={item.href} className={`nav-item ${active ? 'active' : ''}`} onClick={() => setOpen(false)}>
+                    <Icon size={18}/><span>{item.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
@@ -118,7 +183,7 @@ export default function Shell({ children, title, subtitle }) {
           </div>
           <div className="top-actions">
             <div className="search-box"><Search size={18}/><input placeholder="Cari data, aset, regulasi..."/></div>
-            <select
+            {!configured && <select
               value={role}
               onChange={e => changeRole(e.target.value)}
               title="Prototype role preview"
@@ -126,9 +191,14 @@ export default function Shell({ children, title, subtitle }) {
               style={{border:'1px solid var(--line)',background:'#fff',borderRadius:11,padding:'9px 10px',fontWeight:800,color:'#46505c'}}
             >
               {roles.map(item => <option key={item}>{item}</option>)}
-            </select>
+            </select>}
+            {configured && <div style={{display:'flex',alignItems:'center',gap:9,padding:'6px 9px',border:'1px solid var(--line)',borderRadius:12,background:'#fff'}}>
+              <UserCircle2 size={18} color="var(--green)"/>
+              <div style={{display:'grid',lineHeight:1.15}}><b style={{fontSize:12}}>{profile?.full_name || profile?.email || 'SINSHE User'}</b><span style={{fontSize:10,color:'#7b858f'}}>{role} • {profile?.unit || '-'}</span></div>
+            </div>}
             <button className="icon-btn notification" aria-label="Notifikasi"><Bell size={20}/><span/></button>
-            <div className="avatar">{role.slice(0,2).toUpperCase()}</div>
+            <div className="avatar">{initials(profile?.full_name || (configured ? profile?.email : role))}</div>
+            {configured && <button className="icon-btn" aria-label="Keluar" title="Keluar" onClick={handleLogout}><LogOut size={19}/></button>}
           </div>
         </header>
         <section className="page-content">{children}</section>
