@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import Shell from '../components/Shell'
 import CompanyScopeBar from '../components/CompanyScopeBar'
 import { Badge, BarList, Donut, Panel, Progress, StatCard } from '../components/Ui'
-import { AlertTriangle, Award, CheckCircle2, Clock3, FileCheck2, Flame, Gauge, ShieldCheck, Siren, TrendingDown } from 'lucide-react'
+import {
+  AlertTriangle, CheckCircle2, ClipboardCheck, Clock3, Eye, FileWarning,
+  Flame, GraduationCap, ShieldCheck, Siren, Target, TrendingDown, Wrench
+} from 'lucide-react'
 import { dbSelect, isSupabaseConfigured } from '../lib/supabase-rest'
 import { COMPANY_MASTER, DEFAULT_COMPANY_FILTERS, companyCodeOf, filteredCompanies, scopeLabel } from '../lib/company-master'
 
@@ -13,13 +16,10 @@ const riskCategories = ['Kebakaran', 'Alat Berat', 'Bahan Kimia', 'Kelistrikan',
 const fallbackHeat = [[1,2,1,3,2,1],[3,4,2,2,3,2],[2,1,3,1,2,4],[2,3,1,4,1,2],[4,2,3,2,3,1]]
 const heatTone = v => v >= 4 ? 'h-crit' : v === 3 ? 'h-high' : v === 2 ? 'h-med' : 'h-low'
 const incidentTypes = ['Near Miss','First Aid','Medical Treatment','Lost Time Injury','Property Damage','Environmental','Fire']
-const fallbackIncidentBars = [
-  { label:'Near Miss', value:34, tone:'blue' }, { label:'First Aid', value:21, tone:'green' },
-  { label:'Medical Treatment', value:12, tone:'orange' }, { label:'Lost Time Injury', value:4, tone:'red' },
-  { label:'Property Damage', value:9, tone:'purple' },
-]
-const fallbackCompliance = [['SMK3',94,'green'],['ISPO',89,'orange'],['RSPO',88,'orange'],['ISO 45001',95,'green'],['ISO 14001',91,'green']]
-const emptyData = { incidents:[], actions:[], observations:[], permits:[], assets:[], compliance:[], hazards:[], loaded:false, centralTables:0, localTables:0 }
+const emptyData = {
+  incidents:[], actions:[], observations:[], permits:[], assets:[], compliance:[], hazards:[], learning:[],
+  loaded:false, centralTables:0, localTables:0,
+}
 
 function safeRead(key){
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : [] } catch { return [] }
@@ -34,6 +34,7 @@ function normalizeDb(table, rows){
   if(table==='assets') return list.map(x=>({...x,riksaDue:isoDate(x.riksa_due),sioDue:isoDate(x.sio_due),siloDue:isoDate(x.silo_due),calibrationDue:isoDate(x.calibration_due)}))
   if(table==='regulatory_obligations') return list.map(x=>({...x,dueDate:isoDate(x.due_date)}))
   if(table==='hazards') return list.map(x=>({...x,category:x.hazard_category,riskLevel:x.risk_level,reviewDate:isoDate(x.review_date)}))
+  if(table==='learning_records') return list.map(x=>({...x,trainingDate:isoDate(x.training_date),validUntil:isoDate(x.valid_until),companyCode:x.company_code}))
   return list
 }
 function isOverdue(value){ return !!value && new Date(`${isoDate(value)}T23:59:59`) < new Date() }
@@ -48,8 +49,8 @@ function classifyHazard(item){
   return null
 }
 function riskScore(item){
-  const level=String(item.riskLevel||item.risk_level||item.risk||'').toLowerCase()
-  if(level.includes('critical')||level.includes('kritis')) return 4
+  const level=String(item.riskLevel||item.risk_level||item.risk||item.severity||'').toLowerCase()
+  if(level.includes('critical')||level.includes('kritis')||level.includes('extreme')) return 4
   if(level.includes('high')||level.includes('tinggi')) return 3
   if(level.includes('medium')||level.includes('sedang')) return 2
   if(level.includes('low')||level.includes('rendah')) return 1
@@ -58,10 +59,16 @@ function riskScore(item){
 }
 function monthKey(date){ const d=new Date(date); if(Number.isNaN(d.getTime())) return ''; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
 function linePoints(values,maxValue){ return values.map((value,index)=>`${Math.round(45+index*(625/Math.max(1,values.length-1)))},${Math.round(235-((value||0)/Math.max(1,maxValue))*180)}`).join(' ') }
+function recordYear(item){
+  const value=item.date||item.incident_date||item.observation_date||item.trainingDate||item.training_date||item.createdAt||item.created_at
+  return value ? String(value).slice(0,4) : ''
+}
+function titleOfRisk(item){ return item.title||item.description||item.obligation||item.name||item.id||'Risk item' }
 
 export default function Executive(){
   const [data,setData]=useState(emptyData)
   const [filters,setFilters]=useState(DEFAULT_COMPANY_FILTERS)
+  const [year,setYear]=useState('All')
 
   useEffect(()=>{
     let active=true
@@ -69,7 +76,8 @@ export default function Executive(){
       const configs=[
         ['incidents','sinshe-incidents','incidents'],['corrective_actions','sinshe-corrective-actions','actions'],
         ['observations','sinshe-observations','observations'],['permits','sinshe-permits','permits'],
-        ['assets','sinshe-assets','assets'],['regulatory_obligations','sinshe-compliance','compliance'],['hazards','sinshe-hazards','hazards'],
+        ['assets','sinshe-assets','assets'],['regulatory_obligations','sinshe-regulatory-obligations','compliance'],
+        ['hazards','sinshe-hazards','hazards'],['learning_records','sinshe-learning-records','learning'],
       ]
       const next={...emptyData,loaded:true}; let centralTables=0; let localTables=0
       await Promise.all(configs.map(async([table,storageKey,stateKey])=>{
@@ -83,103 +91,200 @@ export default function Executive(){
     load(); return()=>{active=false}
   },[])
 
-  const scoped = useMemo(()=>{
+  const availableYears=useMemo(()=>{
+    const all=[...data.incidents,...data.observations,...data.learning]
+    return [...new Set(all.map(recordYear).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
+  },[data])
+
+  const scoped=useMemo(()=>{
     const companies=filteredCompanies(filters)
     const allowed=new Set(companies.map(c=>c.code))
     const specific=filters.company!=='All'||filters.region!=='All'||filters.province!=='All'||filters.pic!=='All'
     const apply=list=>list.filter(item=>{
       const code=companyCodeOf(item)
-      if(!code) return !specific
-      return allowed.has(code)
+      const companyMatch=!code ? !specific : allowed.has(code)
+      const yearMatch=year==='All'||!recordYear(item)||recordYear(item)===year
+      return companyMatch&&yearMatch
     })
     return {
       companies, incidents:apply(data.incidents), actions:apply(data.actions), observations:apply(data.observations),
-      permits:apply(data.permits), assets:apply(data.assets), compliance:apply(data.compliance), hazards:apply(data.hazards),
-      unassigned:[...data.incidents,...data.actions,...data.observations,...data.permits,...data.assets,...data.compliance,...data.hazards].filter(x=>!companyCodeOf(x)).length,
+      permits:apply(data.permits), assets:apply(data.assets), compliance:apply(data.compliance), hazards:apply(data.hazards), learning:apply(data.learning),
+      unassigned:[...data.incidents,...data.actions,...data.observations,...data.permits,...data.assets,...data.compliance,...data.hazards,...data.learning].filter(x=>!companyCodeOf(x)).length,
     }
-  },[data,filters])
+  },[data,filters,year])
 
   const dashboard=useMemo(()=>{
     if(!data.loaded) return null
-    const {incidents,actions,observations,permits,assets,compliance,hazards}=scoped
+    const {incidents,actions,observations,permits,assets,compliance,hazards,learning}=scoped
     const now=new Date()
-    const openIncidents=incidents.filter(i=>i.status!=='Closed').length
-    const highPriority=incidents.filter(i=>['High','Critical'].includes(i.severity)&&i.status!=='Closed').length
+    const fatality=incidents.filter(i=>String(i.type||i.incident_type||'').toLowerCase().includes('fatal')).length
+    const nearMiss=incidents.filter(i=>(i.type||i.incident_type)==='Near Miss').length
+    const inspection=observations.length
+    const unsafeAction=observations.filter(o=>String(o.type||o.observation_type||'').toLowerCase()==='unsafe action').length
+    const unsafeCondition=observations.filter(o=>String(o.type||o.observation_type||'').toLowerCase()==='unsafe condition').length
     const overdueActions=actions.filter(a=>a.status!=='Closed'&&(a.status==='Overdue'||isOverdue(a.dueDate||a.due_date))).length
     const closedActions=actions.filter(a=>a.status==='Closed').length
+    const inProgressActions=actions.filter(a=>['In Progress','Progress'].includes(a.status)).length
+    const openActions=Math.max(0,actions.length-closedActions-inProgressActions)
     const closureRate=actions.length?Math.round(closedActions/actions.length*100):0
-    const activePermits=permits.filter(p=>p.status==='Active').length
-    const compliantCount=compliance.filter(c=>['Compliant','Closed','Complete','Completed'].includes(c.status)).length
-    const complianceRate=compliance.length?Math.round(compliantCount/compliance.length*1000)/10:0
-    const complianceCritical=compliance.filter(c=>['Non Compliant','Expired'].includes(c.status)||(c.status!=='Compliant'&&isOverdue(c.dueDate||c.due_date))).length
+    const expiredPermit=permits.filter(p=>p.status==='Expired'||(p.status!=='Closed'&&isOverdue(p.endDate||p.end_at))).length
     const assetDates=a=>[a.riksaDue||a.riksa_due,a.sioDue||a.sio_due,a.siloDue||a.silo_due,a.calibrationDue||a.calibration_due].filter(Boolean)
     const assetOverdue=assets.filter(a=>assetDates(a).some(isOverdue)).length
     const assetDueSoon=assets.filter(a=>!assetDates(a).some(isOverdue)&&assetDates(a).some(d=>{const n=daysTo(d);return n!==null&&n>=0&&n<=30})).length
-    const latestLTI=[...incidents].filter(i=>(i.type||i.incident_type)==='Lost Time Injury').sort((a,b)=>String(b.date||b.incident_date||'').localeCompare(String(a.date||a.incident_date||'')))[0]
-    const daysWithoutLTI=latestLTI?Math.max(0,Math.floor((now-new Date(`${isoDate(latestLTI.date||latestLTI.incident_date)}T00:00:00`))/86400000)):0
-    const criticalOpen=incidents.filter(i=>i.severity==='Critical'&&i.status!=='Closed').length
-    const unsafeOpen=observations.filter(o=>o.status!=='Closed'&&['High','Critical'].includes(o.risk)).length
-    const highRiskPermit=permits.filter(p=>p.status==='Active'&&['High','Critical'].includes(p.risk)).length
     const highHazards=hazards.filter(h=>h.status!=='Closed'&&riskScore(h)>=3).length
-    const safetyIndex=Math.max(25,Math.min(100,96-criticalOpen*8-overdueActions*3-unsafeOpen*2-assetOverdue*2-complianceCritical*3-highHazards*2+Math.min(closedActions,8)))
-    const incidentBars=incidentTypes.map(type=>({label:type,value:incidents.filter(i=>(i.type||i.incident_type)===type).length,tone:type==='Lost Time Injury'||type==='Fire'?'red':type==='Medical Treatment'?'orange':type==='Near Miss'?'blue':'green'})).filter(x=>x.value>0)
-    const dynamicHeat=riskCategories.map(category=>units.map(unit=>{const m=hazards.filter(h=>h.unit===unit&&classifyHazard(h)===category);return m.length?Math.max(...m.map(riskScore),1):0}))
+    const highIncident=incidents.filter(i=>i.status!=='Closed'&&['High','Critical'].includes(i.severity)).length
+    const highRiskCount=highHazards+highIncident
+
+    const dynamicHeat=riskCategories.map(category=>units.map(unit=>{
+      const matched=hazards.filter(h=>h.unit===unit&&classifyHazard(h)===category)
+      return matched.length?Math.max(...matched.map(riskScore),1):0
+    }))
     const heatLive=dynamicHeat.some(row=>row.some(Boolean))
-    const complianceGroups=Object.entries(compliance.reduce((acc,item)=>{const key=item.category||item.regulation||'General Compliance';if(!acc[key])acc[key]={total:0,compliant:0};acc[key].total+=1;if(['Compliant','Closed','Complete','Completed'].includes(item.status))acc[key].compliant+=1;return acc},{})).map(([name,g])=>{const v=Math.round(g.compliant/Math.max(1,g.total)*100);return[name,v,v>=90?'green':v>=75?'orange':'red']}).sort((a,b)=>b[1]-a[1]).slice(0,5)
-    const reminderCandidates=[]
-    assets.forEach(a=>[['Riksa Uji',a.riksaDue||a.riksa_due],['SIO',a.sioDue||a.sio_due],['SILO',a.siloDue||a.silo_due],['Kalibrasi',a.calibrationDue||a.calibration_due]].forEach(([label,date])=>{if(date)reminderCandidates.push({title:`${label} ${a.name||a.id}`,loc:a.unit||'-',date})}))
-    compliance.forEach(i=>{const date=i.dueDate||i.due_date;if(date&&i.status!=='Compliant')reminderCandidates.push({title:i.obligation||i.regulation||i.id,loc:i.unit||'-',date})})
-    actions.forEach(i=>{const date=i.dueDate||i.due_date;if(date&&i.status!=='Closed')reminderCandidates.push({title:`Action: ${i.title||i.id}`,loc:i.unit||'-',date})})
-    permits.forEach(i=>{const date=i.endDate||i.end_at;if(date&&['Active','Approved'].includes(i.status))reminderCandidates.push({title:`PTW: ${i.title||i.id}`,loc:i.unit||'-',date})})
-    const reminders=reminderCandidates.map(i=>({...i,days:daysTo(i.date)})).filter(i=>i.days!==null&&i.days<=60).sort((a,b)=>a.days-b.days).slice(0,6)
+
     const months=[];for(let o=11;o>=0;o--){const d=new Date(now.getFullYear(),now.getMonth()-o,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)}
-    const obs=months.map(m=>observations.filter(o=>monthKey(o.date||o.observation_date||o.createdAt||o.created_at)===m).length)
-    const near=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)==='Near Miss').length)
-    const rec=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)!=='Near Miss').length)
-    const max=Math.max(1,...obs,...near,...rec)
-    const aiPriority=criticalOpen+overdueActions+assetOverdue+complianceCritical+highRiskPermit+highHazards
-    return {openIncidents,highPriority,overdueActions,closureRate,activePermits,complianceRate,assetOverdue,assetDueSoon,daysWithoutLTI,safetyIndex,aiPriority,incidentBars:incidentBars.length?incidentBars:fallbackIncidentBars,heat:heatLive?dynamicHeat:fallbackHeat,heatLive,complianceGroups:complianceGroups.length?complianceGroups:fallbackCompliance,complianceLive:complianceGroups.length>0,reminders,trend:{observation:linePoints(obs,max),nearMiss:linePoints(near,max),recordable:linePoints(rec,max)}}
+    const obsSeries=months.map(m=>observations.filter(o=>monthKey(o.date||o.observation_date||o.createdAt||o.created_at)===m).length)
+    const nearSeries=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)==='Near Miss').length)
+    const recordableSeries=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)!=='Near Miss').length)
+    const trendMax=Math.max(1,...obsSeries,...nearSeries,...recordableSeries)
+
+    const incidentBars=incidentTypes.map(type=>({label:type,value:incidents.filter(i=>(i.type||i.incident_type)===type).length,tone:type==='Lost Time Injury'||type==='Fire'?'red':type==='Medical Treatment'?'orange':type==='Near Miss'?'blue':'green'})).filter(x=>x.value>0)
+    const distribution=incidentBars.length?incidentBars:[{label:'Belum ada data',value:0,tone:'blue'}]
+
+    const topRisks=[
+      ...hazards.map(h=>({id:h.id,label:titleOfRisk(h),score:riskScore(h)*5,unit:h.unit||'-',source:'Hazard'})),
+      ...incidents.filter(i=>i.status!=='Closed').map(i=>({id:i.id,label:titleOfRisk(i),score:riskScore(i)*5,unit:i.unit||'-',source:'Incident'})),
+      ...actions.filter(a=>a.status!=='Closed').map(a=>({id:a.id,label:titleOfRisk(a),score:riskScore(a)*5+(isOverdue(a.dueDate||a.due_date)?2:0),unit:a.unit||'-',source:'Action'})),
+    ].sort((a,b)=>b.score-a.score).slice(0,5)
+
+    const validTraining=learning.filter(r=>{
+      const explicit=String(r.status||'').toLowerCase()
+      if(['expired','overdue'].includes(explicit)) return false
+      return !r.validUntil&&!r.valid_until ? explicit!=='expired' : !isOverdue(r.validUntil||r.valid_until)
+    }).length
+    const trainingCompliance=learning.length?Math.round(validTraining/learning.length*100):0
+    const trainingExpired=Math.max(0,learning.length-validTraining)
+
+    const reportCategories=[
+      {label:'Inspection / Observation',value:inspection,tone:'green'},
+      {label:'Unsafe Condition',value:unsafeCondition,tone:'orange'},
+      {label:'Permit to Work',value:permits.length,tone:'purple'},
+      {label:'Incident',value:incidents.length,tone:'red'},
+      {label:'Corrective Action',value:actions.length,tone:'blue'},
+      {label:'Compliance',value:compliance.length,tone:'green'},
+    ]
+
+    const insights=[]
+    if(overdueActions>0) insights.push({tone:'red',text:`${overdueActions} corrective action overdue perlu eskalasi PIC dan recovery date.`})
+    if(highRiskCount>0) insights.push({tone:'orange',text:`${highRiskCount} risiko/insiden high-critical membutuhkan kontrol prioritas.`})
+    if(expiredPermit>0||assetOverdue>0) insights.push({tone:'red',text:`${expiredPermit} permit expired dan ${assetOverdue} asset overdue perlu verifikasi sebelum operasi dilanjutkan.`})
+    if(learning.length&&trainingCompliance<100) insights.push({tone:'blue',text:`Kepatuhan training ${trainingCompliance}% dengan ${trainingExpired} record perlu renewal.`})
+    if(!insights.length) insights.push({tone:'green',text:'Belum ada sinyal prioritas kritis pada scope yang dipilih.'})
+
+    return {
+      fatality,nearMiss,inspection,unsafeAction,unsafeCondition,overdueActions,closureRate,
+      expiredPermit,assetOverdue,assetDueSoon,highRiskCount,heat:heatLive?dynamicHeat:fallbackHeat,heatLive,
+      trend:{observation:linePoints(obsSeries,trendMax),nearMiss:linePoints(nearSeries,trendMax),recordable:linePoints(recordableSeries,trendMax)},
+      distribution,topRisks,trainingCompliance,trainingCount:learning.length,trainingExpired,
+      actionBars:[{label:'Closed',value:closedActions,tone:'green'},{label:'In Progress',value:inProgressActions,tone:'blue'},{label:'Open / Overdue',value:openActions,tone:'orange'}],
+      reportCategories,insights,
+    }
   },[data.loaded,scoped])
 
   const sourceLabel=data.centralTables>0?`CENTRAL DATA • ${data.centralTables} modul membaca Supabase${data.localTables?` • ${data.localTables} modul fallback browser`:''}`:data.localTables>0?`MODULE DATA • ${data.localTables} modul membaca data browser`:'REFERENCE MODE • belum ada data operasional tersimpan'
   const selectedMaster=filters.company!=='All'?COMPANY_MASTER.find(c=>c.code===filters.company):null
 
-  return <Shell title="Executive Dashboard" subtitle="Ringkasan kinerja Safety, Health & Environment lintas unit operasi secara real-time.">
+  return <Shell title="Executive Dashboard" subtitle="Dashboard real-time untuk monitoring kinerja K3, kepatuhan, risiko dan tindak lanjut lintas PT.">
     <CompanyScopeBar filters={filters} onChange={setFilters} onReset={()=>setFilters(DEFAULT_COMPANY_FILTERS)}/>
 
-    <div style={{marginBottom:14,padding:'10px 12px',border:'1px solid #d9e9dd',background:'#f1f8f3',borderRadius:10,fontSize:11,fontWeight:800,color:'#176b34',display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+    <div style={{marginBottom:14,padding:'10px 12px',border:'1px solid #d9e9dd',background:'#f1f8f3',borderRadius:10,fontSize:11,fontWeight:800,color:'#176b34',display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',alignItems:'center'}}>
       <span>{sourceLabel} • Scope: {scopeLabel(filters)}</span>
-      <span>{scoped.companies.length} PT aktif{selectedMaster?` • ${selectedMaster.region} • ${selectedMaster.province} • PIC ${selectedMaster.pic}`:''}</span>
+      <span style={{display:'flex',alignItems:'center',gap:8}}>
+        {scoped.companies.length} PT aktif{selectedMaster?` • ${selectedMaster.region} • ${selectedMaster.province} • PIC ${selectedMaster.pic}`:''}
+        <select value={year} onChange={e=>setYear(e.target.value)} style={{border:'1px solid #cfe1d4',borderRadius:8,padding:'6px 8px',background:'#fff',fontWeight:800,color:'#176b34'}}>
+          <option value="All">Semua Tahun</option>{availableYears.map(v=><option key={v}>{v}</option>)}
+        </select>
+      </span>
     </div>
 
-    {scoped.unassigned>0 && (filters.company!=='All'||filters.region!=='All'||filters.province!=='All'||filters.pic!=='All') && <div style={{marginBottom:14,padding:'9px 12px',border:'1px solid #f2d8a4',background:'#fff8e8',borderRadius:10,fontSize:11,color:'#805b12'}}>{scoped.unassigned} record lama belum memiliki Company/PT sehingga tidak ditampilkan saat filter PT aktif.</div>}
+    {scoped.unassigned>0 && <div style={{marginBottom:14,padding:'9px 12px',border:'1px solid #f2d49b',background:'#fff8e8',borderRadius:10,fontSize:11,color:'#8a5a00'}}>
+      {scoped.unassigned} record lama belum memiliki Company/PT. Record tersebut hanya muncul saat scope All Companies.
+    </div>}
 
     <div className="stats-grid six">
-      <StatCard label="TRIFR" value="—" hint="butuh data man-hours" tone="green" icon={<TrendingDown/>}/>
-      <StatCard label="LTIFR" value="—" hint={`${dashboard?.daysWithoutLTI??0} hari tanpa LTI`} tone="green" icon={<ShieldCheck/>}/>
-      <StatCard label="Open Incident" value={dashboard?.openIncidents??0} hint={`${dashboard?.highPriority??0} high / critical`} tone="orange" icon={<Siren/>}/>
-      <StatCard label="Overdue Action" value={dashboard?.overdueActions??0} hint="perlu tindak lanjut" tone="red" icon={<AlertTriangle/>}/>
-      <StatCard label="Compliance" value={`${dashboard?.complianceRate??0}%`} hint="Regulatory Compliance" tone="blue" icon={<FileCheck2/>}/>
-      <StatCard label="Active Permit" value={dashboard?.activePermits??0} hint="Permit to Work" tone="purple" icon={<Award/>}/>
+      <StatCard label="TRIFR" value="—" hint="butuh man-hours" tone="green" icon={<TrendingDown/>}/>
+      <StatCard label="LTIFR" value="—" hint="butuh man-hours" tone="blue" icon={<ShieldCheck/>}/>
+      <StatCard label="Fatality" value={dashboard?.fatality??0} hint="Zero Harm" tone="red" icon={<Siren/>}/>
+      <StatCard label="Near Miss" value={dashboard?.nearMiss??0} hint="reported" tone="purple" icon={<Eye/>}/>
+      <StatCard label="Inspection" value={dashboard?.inspection??0} hint="inspection & observation" tone="green" icon={<ClipboardCheck/>}/>
+      <StatCard label="Unsafe Action" value={dashboard?.unsafeAction??0} hint="perlu coaching" tone="orange" icon={<AlertTriangle/>}/>
     </div>
 
-    <div className="exec-grid">
-      <Panel title="Tren Insiden & Observasi (12 Bulan)" action={scopeLabel(filters)}>
-        <div className="chart-card"><svg viewBox="0 0 700 300" role="img" aria-label="Tren insiden dan observasi"><g className="grid-lines"><line x1="45" y1="40" x2="675" y2="40"/><line x1="45" y1="105" x2="675" y2="105"/><line x1="45" y1="170" x2="675" y2="170"/><line x1="45" y1="235" x2="675" y2="235"/></g><polyline className="line green" points={dashboard?.trend.observation||''}/><polyline className="line orange" points={dashboard?.trend.nearMiss||''}/><polyline className="line red" points={dashboard?.trend.recordable||''}/></svg><div className="chart-legend"><span><i className="dot d-green"/>Safety Observation</span><span><i className="dot d-orange"/>Near Miss</span><span><i className="dot d-red"/>Recordable Incident</span></div></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12,margin:'14px 0'}}>
+      <div className="panel" style={{padding:14}}><div style={{display:'flex',gap:10,alignItems:'center'}}><Flame color="#d63333"/><div><small style={{color:'#7c858e',fontWeight:800}}>RISIKO TINGGI</small><div style={{fontSize:24,fontWeight:900}}>{dashboard?.highRiskCount??0}</div><span style={{fontSize:11,color:'#7c858e'}}>Hazard & incident high/critical</span></div></div></div>
+      <div className="panel" style={{padding:14}}><div style={{display:'flex',gap:10,alignItems:'center'}}><FileWarning color="#e58a11"/><div><small style={{color:'#7c858e',fontWeight:800}}>PERMIT EXPIRED</small><div style={{fontSize:24,fontWeight:900}}>{dashboard?.expiredPermit??0}</div><span style={{fontSize:11,color:'#7c858e'}}>Perlu close-out / revalidation</span></div></div></div>
+      <div className="panel" style={{padding:14}}><div style={{display:'flex',gap:10,alignItems:'center'}}><Wrench color="#2469a8"/><div><small style={{color:'#7c858e',fontWeight:800}}>ASSET DUE / OVERDUE</small><div style={{fontSize:24,fontWeight:900}}>{dashboard?.assetDueSoon??0} / {dashboard?.assetOverdue??0}</div><span style={{fontSize:11,color:'#7c858e'}}>Riksa uji, SIO, SILO, kalibrasi</span></div></div></div>
+    </div>
+
+    <div className="exec-grid two">
+      <Panel title="Tren Kinerja 12 Bulan" action="Inspection • Near Miss • Recordable">
+        <div className="chart-card">
+          <svg viewBox="0 0 700 300" role="img" aria-label="Tren kinerja 12 bulan">
+            <g className="grid-lines"><line x1="45" y1="40" x2="675" y2="40"/><line x1="45" y1="105" x2="675" y2="105"/><line x1="45" y1="170" x2="675" y2="170"/><line x1="45" y1="235" x2="675" y2="235"/></g>
+            <polyline className="line green" points={dashboard?.trend.observation||''}/><polyline className="line orange" points={dashboard?.trend.nearMiss||''}/><polyline className="line red" points={dashboard?.trend.recordable||''}/>
+          </svg>
+          <div className="chart-legend"><span><i className="dot d-green"/>Inspection</span><span><i className="dot d-orange"/>Near Miss</span><span><i className="dot d-red"/>Recordable</span></div>
+        </div>
       </Panel>
-      <Panel title="Safety Performance Index"><div className="donut-wrap"><Donut value={dashboard?.safetyIndex??0} tone="green" label="Index"/></div><div className="mini-metric-list"><div><span>Asset Due / Overdue</span><b className={(dashboard?.assetOverdue??0)>0?'red-text':'green-text'}>{dashboard?.assetDueSoon??0} / {dashboard?.assetOverdue??0}</b></div><div><span>AI Priority Signals</span><b className={(dashboard?.aiPriority??0)>0?'red-text':'green-text'}>{dashboard?.aiPriority??0}</b></div><div><span>Days Without LTI</span><b>{dashboard?.daysWithoutLTI??0} Hari</b></div></div></Panel>
+      <Panel title="Distribusi Kejadian" action={`${dashboard?.distribution.reduce((s,x)=>s+x.value,0)||0} laporan`}>
+        <BarList data={dashboard?.distribution||[]}/>
+      </Panel>
     </div>
 
     <div className="exec-grid two">
-      <Panel title="Risk Heatmap per Unit" action={dashboard?.heatLive?'Hazard Register':'Reference'}><div className="heatmap"><div className="heat-corner"/>{units.map(e=><div key={e} className="heat-col-head">{e}</div>)}{riskCategories.map((r,ri)=><div className="heat-row" key={r}><div className="heat-row-head">{r}</div>{(dashboard?.heat?.[ri]||fallbackHeat[ri]).map((v,ci)=><div key={ci} className={`heat-cell ${heatTone(v||1)}`}>{dashboard?.heatLive&&!v?'–':v}</div>)}</div>)}</div><div className="heat-legend"><span><i className="hl h-low"/>Rendah</span><span><i className="hl h-med"/>Sedang</span><span><i className="hl h-high"/>Tinggi</span><span><i className="hl h-crit"/>Kritis</span></div></Panel>
-      <Panel title="Insiden per Kategori"><BarList data={dashboard?.incidentBars||fallbackIncidentBars}/></Panel>
+      <Panel title="Heat Map Risiko" action={dashboard?.heatLive?'Hazard Register':'Reference until Hazard Register live'}>
+        <div className="heatmap">
+          <div className="heat-corner"/>{units.map(e=><div key={e} className="heat-col-head">{e}</div>)}
+          {riskCategories.map((r,ri)=><div className="heat-row" key={r}><div className="heat-row-head">{r}</div>{(dashboard?.heat?.[ri]||fallbackHeat[ri]).map((v,ci)=><div key={ci} className={`heat-cell ${heatTone(v||1)}`}>{dashboard?.heatLive&&!v?'–':v}</div>)}</div>)}
+        </div>
+        <div className="heat-legend"><span><i className="hl h-low"/>Rendah</span><span><i className="hl h-med"/>Sedang</span><span><i className="hl h-high"/>Tinggi</span><span><i className="hl h-crit"/>Kritis</span></div>
+      </Panel>
+      <Panel title="Tindakan / Action Status" action={`${dashboard?.closureRate??0}% closure`}>
+        <BarList data={dashboard?.actionBars||[]}/>
+        <div style={{marginTop:16}}><Progress value={dashboard?.closureRate??0} tone={(dashboard?.closureRate??0)>=90?'green':'orange'}/></div>
+      </Panel>
     </div>
 
     <div className="exec-grid two">
-      <Panel title="Compliance per Kategori" action={dashboard?.complianceLive?'Regulatory Register':'Reference'}><div className="perspective-list">{(dashboard?.complianceGroups||fallbackCompliance).map(([n,v,t])=><div key={n}><div><b>{n}</b><span>{v}%</span></div><Progress value={v} tone={t}/></div>)}</div></Panel>
-      <Panel title="Upcoming & Reminder" action="≤ 60 Hari"><div className="reminder-list">{(dashboard?.reminders||[]).map(item=>{const tone=item.days<0||item.days<=14?'red':item.days<=30?'orange':'blue';const due=item.days<0?`${Math.abs(item.days)} Hari Overdue`:item.days===0?'Hari Ini':`${item.days} Hari`;return <div key={`${item.title}-${item.date}`}><Clock3/><span><b>{item.title}</b><small>{item.loc}</small></span><Badge tone={tone}>{due}</Badge></div>})}{!dashboard?.reminders?.length&&<div style={{padding:'18px 4px',fontSize:12,color:'#7c858e'}}>Belum ada reminder ≤ 60 hari pada scope PT ini.</div>}</div></Panel>
+      <Panel title="Top 5 Risiko Tertinggi" action="Current scope">
+        <div className="table-wrap"><table><thead><tr><th>Risk</th><th>Source</th><th>Unit</th><th>Score</th></tr></thead><tbody>
+          {(dashboard?.topRisks||[]).map(r=><tr key={`${r.source}-${r.id}`}><td><b>{r.label}</b></td><td>{r.source}</td><td>{r.unit}</td><td><Badge tone={r.score>=15?'red':r.score>=10?'orange':'blue'}>{r.score}</Badge></td></tr>)}
+          {!dashboard?.topRisks?.length&&<tr><td colSpan="4" style={{color:'#7c858e'}}>Belum ada risk data pada scope ini.</td></tr>}
+        </tbody></table></div>
+      </Panel>
+      <Panel title="Kepatuhan Training" action="Learning & Competency">
+        <div className="donut-wrap"><Donut value={dashboard?.trainingCompliance??0} tone={(dashboard?.trainingCompliance??0)>=90?'green':'orange'} label="Compliant"/></div>
+        <div className="mini-metric-list">
+          <div><span>Total record</span><b>{dashboard?.trainingCount??0}</b></div>
+          <div><span>Expired / renewal</span><b className={(dashboard?.trainingExpired??0)>0?'red-text':'green-text'}>{dashboard?.trainingExpired??0}</b></div>
+          <div><span>Target</span><b>100%</b></div>
+        </div>
+      </Panel>
     </div>
 
-    <div className="impact-grid"><div><ShieldCheck/><b>0</b><span>Fatality (Zero Harm)</span></div><div><CheckCircle2/><b>{dashboard?.closureRate??0}%</b><span>Action closure rate</span></div><div><Gauge/><b>{dashboard?.activePermits??0}</b><span>Active permit</span></div><div><Flame/><b>{dashboard?.aiPriority??0}</b><span>Priority signals</span></div></div>
+    <div className="exec-grid two">
+      <Panel title="Kategori Laporan" action="Live module count"><BarList data={dashboard?.reportCategories||[]}/></Panel>
+      <Panel title="Insight Utama" action="Management attention">
+        <div className="reminder-list">
+          {(dashboard?.insights||[]).map((item,index)=><div key={index}><Target/><span><b>{item.text}</b><small>Scope: {scopeLabel(filters)}</small></span><Badge tone={item.tone}>{index+1}</Badge></div>)}
+        </div>
+      </Panel>
+    </div>
+
+    <div className="impact-grid">
+      <div><ShieldCheck/><b>{dashboard?.fatality??0}</b><span>Fatality</span></div>
+      <div><CheckCircle2/><b>{dashboard?.closureRate??0}%</b><span>Action closure</span></div>
+      <div><GraduationCap/><b>{dashboard?.trainingCompliance??0}%</b><span>Training compliance</span></div>
+      <div><Clock3/><b>{dashboard?.overdueActions??0}</b><span>Overdue actions</span></div>
+    </div>
   </Shell>
 }
