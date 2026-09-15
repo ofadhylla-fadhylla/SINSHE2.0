@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, FileCheck2,
+  Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, FileCheck2, FileSearch,
   GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Menu, Network, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
@@ -30,6 +30,7 @@ const groups = [
       { href: '/safety-briefing', label: 'Safety Briefing & Induction', icon: Users },
       { href: '/learning-competency', label: 'Learning & Competency', icon: GraduationCap },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
+      { href: '/digital-jsa', label: 'Digital JSA', icon: FileSearch },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
       { href: '/corrective-action', label: 'Corrective Action Tracking', icon: ListTodo },
       { href: '/incident', label: 'Incident Management', icon: Siren },
