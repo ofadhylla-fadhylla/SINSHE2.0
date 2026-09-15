@@ -1,68 +1,112 @@
 import Shell from '../components/Shell'
-import { SectionTitle, StatCard } from '../components/Ui'
-import { Activity, BrainCircuit, Cloud, Database, FileCheck2, Gauge, Leaf, Network, ShieldCheck, Smartphone, Users, Workflow } from 'lucide-react'
+import { Badge, BarList, Donut, Panel, Progress, SectionTitle, StatCard } from '../components/Ui'
+import { AlertTriangle, Award, CheckCircle2, Clock3, FileCheck2, Flame, Gauge, ShieldCheck, Siren, TrendingDown } from 'lucide-react'
 
-const modules = [
-  ['1', 'Learning & Competency', 'Training, sertifikasi, kompetensi & lisensi', 'red'],
-  ['2', 'Hazard & Risk Management', 'HIRA, JSA, Risk Register & Assessment', 'orange'],
-  ['3', 'Inspection & Observation', 'Checklist, temuan & tindakan korektif', 'green'],
-  ['4', 'Incident Management', 'Near miss, LTI, MTC, investigasi & RCA', 'teal'],
-  ['5', 'Permit to Work', 'Work permit digital, approval & tracking', 'blue'],
-  ['6', 'Asset Integrity Management', 'Boiler, crane, forklift, vessel & WWTP', 'navy'],
-  ['7', 'Regulatory Compliance', 'Legal register, SMK3, ISPO, RSPO & ESG', 'purple'],
-  ['8', 'Executive Dashboard', 'KPI, heatmap, analytics & reporting real-time', 'blue'],
-  ['9', 'AI Recommendation Engine', 'Prediksi risiko, anomaly detection & rekomendasi', 'green'],
-  ['10', 'Mobile Platform', 'Akses mobile, offline, QR, GPS & camera', 'green'],
+const estates = ['PKS A', 'PKS B', 'PKS C', 'Estate 1', 'Estate 2', 'Estate 3']
+const risks = ['Kebakaran', 'Alat Berat', 'Bahan Kimia', 'Kelistrikan', 'Confined Space']
+const heat = [
+  [1, 2, 1, 3, 2, 1],
+  [3, 4, 2, 2, 3, 2],
+  [2, 1, 3, 1, 2, 4],
+  [2, 3, 1, 4, 1, 2],
+  [4, 2, 3, 2, 3, 1],
+]
+const heatTone = v => v >= 4 ? 'h-crit' : v === 3 ? 'h-high' : v === 2 ? 'h-med' : 'h-low'
+
+const incidents = [
+  { label: 'Near Miss', value: 34, tone: 'blue' },
+  { label: 'First Aid', value: 21, tone: 'green' },
+  { label: 'Medical Treatment', value: 12, tone: 'orange' },
+  { label: 'Lost Time Injury', value: 4, tone: 'red' },
+  { label: 'Property Damage', value: 9, tone: 'purple' },
 ]
 
-export default function Home(){
-  return <Shell title="SHINSE 2.0 Ecosystem" subtitle="Smart Integrated Network for Safety, Health & Environment — satu platform untuk data, proses, manusia dan teknologi.">
-    <div className="hero-strip">
-      <div><strong>FROM REACTIVE SAFETY</strong><span>TO PREDICTIVE SAFETY</span></div>
-      <div className="hero-pills"><span>1 Platform Terintegrasi</span><span>Data Real-time</span><span>AI & Analitik</span><span>Keputusan Cepat</span></div>
+const reminders = [
+  ['Riksa Uji Boiler 1', 'PKS A', '12 Hari', 'red'],
+  ['SIO Forklift 23', 'Estate 3', '20 Hari', 'orange'],
+  ['Audit SMK3 Internal', 'Head Office', '45 Hari', 'blue'],
+  ['Renewal Izin Lingkungan', 'PKS B', '58 Hari', 'green'],
+]
+
+export default function Executive(){
+  return <Shell title="Executive Dashboard" subtitle="Ringkasan kinerja Safety, Health & Environment lintas unit operasi secara real-time.">
+    <div className="stats-grid six">
+      <StatCard label="TRIFR" value="1.42" hint="-18% vs 2025" tone="green" icon={<TrendingDown/>}/>
+      <StatCard label="LTIFR" value="0.36" hint="Target < 0.50" tone="green" icon={<ShieldCheck/>}/>
+      <StatCard label="Open Incident" value="7" hint="3 high priority" tone="orange" icon={<Siren/>}/>
+      <StatCard label="Overdue Action" value="12" hint="perlu tindak lanjut" tone="red" icon={<AlertTriangle/>}/>
+      <StatCard label="Compliance" value="92.4%" hint="+8.6% vs bulan lalu" tone="blue" icon={<FileCheck2/>}/>
+      <StatCard label="Active Permit" value="28" hint="hari ini" tone="purple" icon={<Award/>}/>
     </div>
 
-    <div className="stats-grid four">
-      <StatCard label="Fatality" value="0" hint="Zero Harm" tone="red" icon={<ShieldCheck/>}/>
-      <StatCard label="High Risk Incident" value="-50%" hint="vs 2025" tone="orange" icon={<Activity/>}/>
-      <StatCard label="Response Time" value="-30%" hint="vs 2025" tone="blue" icon={<Gauge/>}/>
-      <StatCard label="Compliance" value="100%" hint="Audit & Regulation" tone="purple" icon={<FileCheck2/>}/>
+    <div className="exec-grid">
+      <Panel title="Tren Insiden & Observasi (12 Bulan)" action="2026">
+        <div className="chart-card">
+          <svg viewBox="0 0 700 300" role="img" aria-label="Tren insiden dan observasi">
+            <g className="grid-lines"><line x1="45" y1="40" x2="675" y2="40"/><line x1="45" y1="105" x2="675" y2="105"/><line x1="45" y1="170" x2="675" y2="170"/><line x1="45" y1="235" x2="675" y2="235"/></g>
+            <polyline className="line green" points="45,150 100,135 157,145 214,120 271,110 328,95 385,100 442,85 499,78 556,70 613,62 670,55"/>
+            <polyline className="line orange" points="45,200 100,205 157,190 214,195 271,180 328,185 385,170 442,175 499,160 556,165 613,150 670,148"/>
+            <polyline className="line red" points="45,240 100,238 157,242 214,230 271,232 328,225 385,228 442,220 499,222 556,215 613,214 670,208"/>
+          </svg>
+          <div className="chart-legend"><span><i className="dot d-green"/>Safety Observation</span><span><i className="dot d-orange"/>Near Miss</span><span><i className="dot d-red"/>Recordable Incident</span></div>
+        </div>
+      </Panel>
+
+      <Panel title="Safety Performance Index">
+        <div className="donut-wrap"><Donut value={87} tone="green" label="Index"/></div>
+        <div className="mini-metric-list">
+          <div><span>Leading Indicator</span><b className="green-text">Baik</b></div>
+          <div><span>Lagging Indicator</span><b className="green-text">Terkendali</b></div>
+          <div><span>Days Without LTI</span><b>184 Hari</b></div>
+        </div>
+      </Panel>
     </div>
 
-    <div className="ecosystem-layout">
-      <div className="panel">
-        <SectionTitle title="Data Sources" />
-        <div className="source-list">
-          <div><Users/><span><b>People Data</b><small>Kompetensi, training, sertifikasi, perilaku & kesehatan.</small></span></div>
-          <div><Workflow/><span><b>Process Data</b><small>SOP, workflow, permit, inspeksi, audit & investigasi.</small></span></div>
-          <div><Database/><span><b>Operational Data</b><small>Produksi, maintenance, aset, energi & logistik.</small></span></div>
-          <div><Network/><span><b>IoT & Sensor Data</b><small>Gas, suhu, getaran, lingkungan & alat berat.</small></span></div>
+    <div className="exec-grid two">
+      <Panel title="Risk Heatmap per Unit">
+        <div className="heatmap">
+          <div className="heat-corner" />
+          {estates.map(e => <div key={e} className="heat-col-head">{e}</div>)}
+          {risks.map((r, ri) => (
+            <div className="heat-row" key={r}>
+              <div className="heat-row-head">{r}</div>
+              {heat[ri].map((v, ci) => <div key={ci} className={`heat-cell ${heatTone(v)}`}>{v}</div>)}
+            </div>
+          ))}
         </div>
-      </div>
+        <div className="heat-legend">
+          <span><i className="hl h-low"/>Rendah</span><span><i className="hl h-med"/>Sedang</span><span><i className="hl h-high"/>Tinggi</span><span><i className="hl h-crit"/>Kritis</span>
+        </div>
+      </Panel>
 
-      <div className="panel wide">
-        <SectionTitle title="Enterprise Modules" action="10 Modules" />
-        <div className="module-grid">
-          {modules.map(([n,title,desc,tone]) => <div className={`module-card m-${tone}`} key={n}><div className="module-no">{n}</div><div><h3>{title}</h3><p>{desc}</p></div></div>)}
-        </div>
-      </div>
-
-      <div className="panel">
-        <SectionTitle title="Key Enablers" />
-        <div className="source-list">
-          <div><Cloud/><span><b>Cloud Platform</b><small>Scalable, secure & highly available.</small></span></div>
-          <div><ShieldCheck/><span><b>Cyber Security</b><small>Encryption, access management & audit trail.</small></span></div>
-          <div><BrainCircuit/><span><b>AI & Machine Learning</b><small>Predictive model, anomaly detection & rekomendasi.</small></span></div>
-          <div><Smartphone/><span><b>Mobile & Web</b><small>Akses mudah, kapan saja & di mana saja.</small></span></div>
-        </div>
-      </div>
+      <Panel title="Insiden per Kategori">
+        <BarList data={incidents}/>
+      </Panel>
     </div>
 
-    <div className="value-row">
-      <div><Gauge/><b>Visibility Menyeluruh</b><span>Data operasi real-time</span></div>
-      <div><Activity/><b>Pencegahan Proaktif</b><span>Risiko teridentifikasi lebih dini</span></div>
-      <div><Users/><b>Kolaborasi Kuat</b><span>Semua pihak terhubung</span></div>
-      <div><Leaf/><b>Keberlanjutan</b><span>Operasi aman & lingkungan terjaga</span></div>
+    <div className="exec-grid two">
+      <Panel title="Compliance per Standar">
+        <div className="perspective-list">
+          {[['SMK3 (PP 50/2012)', 94, 'green'], ['ISPO', 89, 'orange'], ['RSPO', 88, 'orange'], ['ISO 45001', 95, 'green'], ['ISO 14001', 91, 'green']].map(([n, v, t]) => (
+            <div key={n}><div><b>{n}</b><span>{v}%</span></div><Progress value={v} tone={t}/></div>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel title="Upcoming & Reminder" action="Prioritas">
+        <div className="reminder-list">
+          {reminders.map(([t, loc, due, tone]) => (
+            <div key={t}><Clock3/><span><b>{t}</b><small>{loc}</small></span><Badge tone={tone}>{due}</Badge></div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+
+    <div className="impact-grid">
+      <div><ShieldCheck/><b>0</b><span>Fatality (Zero Harm)</span></div>
+      <div><CheckCircle2/><b>96%</b><span>Action closure rate</span></div>
+      <div><Gauge/><b>-30%</b><span>Response time</span></div>
+      <div><Flame/><b>-42%</b><span>High risk finding</span></div>
     </div>
   </Shell>
 }
