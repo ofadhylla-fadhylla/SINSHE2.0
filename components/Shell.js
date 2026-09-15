@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch, FolderOpen,
-  GraduationCap, LayoutDashboard, Leaf, ListTodo, LogIn, LogOut, Menu, Network, QrCode, ScanLine, Search,
+  GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -44,9 +44,10 @@ const groups = [
       { href: '/asset-integrity', label: 'Asset Integrity Management', icon: Wrench },
       { href: '/qr-labels', label: 'QR Label Generator', icon: QrCode },
       { href: '/regulatory-compliance', label: 'Regulatory Compliance', icon: FileCheck2 },
-      { href: '/environmental-esg', label: 'Environmental & ESG Dashboard', icon: Leaf },
       { href: '/audit-management', label: 'Audit Management', icon: ClipboardList },
       { href: '/document-evidence', label: 'Document & Evidence', icon: FolderOpen },
+      { href: '/environmental-esg', label: 'Environmental & ESG Dashboard', icon: Activity },
+      { href: '/gis-map', label: 'GIS Safety & Environmental Map', icon: MapIcon },
     ],
   },
   {
