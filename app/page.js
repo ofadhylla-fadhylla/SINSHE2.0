@@ -15,9 +15,10 @@ const units = ['PKS A', 'PKS B', 'PKS C', 'Estate 1', 'Estate 2', 'Estate 3']
 const riskCategories = ['Kebakaran', 'Alat Berat', 'Bahan Kimia', 'Kelistrikan', 'Confined Space']
 const fallbackHeat = [[1,2,1,3,2,1],[3,4,2,2,3,2],[2,1,3,1,2,4],[2,3,1,4,1,2],[4,2,3,2,3,1]]
 const heatTone = v => v >= 4 ? 'h-crit' : v === 3 ? 'h-high' : v === 2 ? 'h-med' : 'h-low'
-const incidentTypes = ['Near Miss','First Aid','Medical Treatment','Lost Time Injury','Property Damage','Environmental','Fire']
+const incidentTypes = ['Near Miss','First Aid','Medical Treatment','Restricted Work Case','Lost Time Injury','Fatality','Property Damage','Environmental','Fire']
+const RATE_MULTIPLIER = 1000000
 const emptyData = {
-  incidents:[], actions:[], observations:[], permits:[], assets:[], compliance:[], hazards:[], learning:[],
+  incidents:[], actions:[], observations:[], permits:[], assets:[], compliance:[], hazards:[], learning:[], exposures:[],
   loaded:false, centralTables:0, localTables:0,
 }
 
@@ -27,7 +28,7 @@ function safeRead(key){
 function isoDate(value){ if(!value) return ''; const text=String(value); return text.includes('T')?text.slice(0,10):text }
 function normalizeDb(table, rows){
   const list=Array.isArray(rows)?rows:[]
-  if(table==='incidents') return list.map(x=>({...x,date:isoDate(x.incident_date),type:x.incident_type,dueDate:isoDate(x.due_date)}))
+  if(table==='incidents') return list.map(x=>({...x,date:isoDate(x.incident_date),type:x.incident_type,dueDate:isoDate(x.due_date),companyCode:x.company_code}))
   if(table==='corrective_actions') return list.map(x=>({...x,dueDate:isoDate(x.due_date)}))
   if(table==='observations') return list.map(x=>({...x,date:isoDate(x.observation_date),type:x.observation_type,dueDate:isoDate(x.due_date)}))
   if(table==='permits') return list.map(x=>({...x,type:x.permit_type,startDate:isoDate(x.start_at),endDate:isoDate(x.end_at)}))
@@ -35,6 +36,7 @@ function normalizeDb(table, rows){
   if(table==='regulatory_obligations') return list.map(x=>({...x,dueDate:isoDate(x.due_date)}))
   if(table==='hazards') return list.map(x=>({...x,category:x.hazard_category,riskLevel:x.risk_level,reviewDate:isoDate(x.review_date)}))
   if(table==='learning_records') return list.map(x=>({...x,trainingDate:isoDate(x.training_date),validUntil:isoDate(x.valid_until),companyCode:x.company_code}))
+  if(table==='hse_exposure_hours') return list.map(x=>({...x,companyCode:x.company_code,periodMonth:isoDate(x.period_month),employeeHours:Number(x.employee_hours||0),contractorHours:Number(x.contractor_hours||0)}))
   return list
 }
 function isOverdue(value){ return !!value && new Date(`${isoDate(value)}T23:59:59`) < new Date() }
@@ -60,10 +62,14 @@ function riskScore(item){
 function monthKey(date){ const d=new Date(date); if(Number.isNaN(d.getTime())) return ''; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
 function linePoints(values,maxValue){ return values.map((value,index)=>`${Math.round(45+index*(625/Math.max(1,values.length-1)))},${Math.round(235-((value||0)/Math.max(1,maxValue))*180)}`).join(' ') }
 function recordYear(item){
-  const value=item.date||item.incident_date||item.observation_date||item.trainingDate||item.training_date||item.createdAt||item.created_at
+  const value=item.date||item.incident_date||item.observation_date||item.trainingDate||item.training_date||item.periodMonth||item.period_month||item.createdAt||item.created_at
   return value ? String(value).slice(0,4) : ''
 }
 function titleOfRisk(item){ return item.title||item.description||item.obligation||item.name||item.id||'Risk item' }
+function incidentType(item){ return String(item.type||item.incident_type||'').toLowerCase() }
+function isRecordableIncident(item){ return /(medical treatment|restricted work|lost time|fatal)/.test(incidentType(item)) }
+function isLostTimeIncident(item){ return /lost time/.test(incidentType(item)) }
+function formatHours(value){ return new Intl.NumberFormat('id-ID',{maximumFractionDigits:0}).format(Number(value)||0) }
 
 export default function Executive(){
   const [data,setData]=useState(emptyData)
@@ -78,6 +84,7 @@ export default function Executive(){
         ['observations','sinshe-observations','observations'],['permits','sinshe-permits','permits'],
         ['assets','sinshe-assets','assets'],['regulatory_obligations','sinshe-regulatory-obligations','compliance'],
         ['hazards','sinshe-hazards','hazards'],['learning_records','sinshe-learning-records','learning'],
+        ['hse_exposure_hours','sinshe-exposure-hours','exposures'],
       ]
       const next={...emptyData,loaded:true}; let centralTables=0; let localTables=0
       await Promise.all(configs.map(async([table,storageKey,stateKey])=>{
@@ -92,7 +99,7 @@ export default function Executive(){
   },[])
 
   const availableYears=useMemo(()=>{
-    const all=[...data.incidents,...data.observations,...data.learning]
+    const all=[...data.incidents,...data.observations,...data.learning,...data.exposures]
     return [...new Set(all.map(recordYear).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
   },[data])
 
@@ -108,16 +115,16 @@ export default function Executive(){
     })
     return {
       companies, incidents:apply(data.incidents), actions:apply(data.actions), observations:apply(data.observations),
-      permits:apply(data.permits), assets:apply(data.assets), compliance:apply(data.compliance), hazards:apply(data.hazards), learning:apply(data.learning),
-      unassigned:[...data.incidents,...data.actions,...data.observations,...data.permits,...data.assets,...data.compliance,...data.hazards,...data.learning].filter(x=>!companyCodeOf(x)).length,
+      permits:apply(data.permits), assets:apply(data.assets), compliance:apply(data.compliance), hazards:apply(data.hazards), learning:apply(data.learning), exposures:apply(data.exposures),
+      unassigned:[...data.incidents,...data.actions,...data.observations,...data.permits,...data.assets,...data.compliance,...data.hazards,...data.learning,...data.exposures].filter(x=>!companyCodeOf(x)).length,
     }
   },[data,filters,year])
 
   const dashboard=useMemo(()=>{
     if(!data.loaded) return null
-    const {incidents,actions,observations,permits,assets,compliance,hazards,learning}=scoped
+    const {incidents,actions,observations,permits,assets,compliance,hazards,learning,exposures}=scoped
     const now=new Date()
-    const fatality=incidents.filter(i=>String(i.type||i.incident_type||'').toLowerCase().includes('fatal')).length
+    const fatality=incidents.filter(i=>incidentType(i).includes('fatal')).length
     const nearMiss=incidents.filter(i=>(i.type||i.incident_type)==='Near Miss').length
     const inspection=observations.length
     const unsafeAction=observations.filter(o=>String(o.type||o.observation_type||'').toLowerCase()==='unsafe action').length
@@ -135,6 +142,13 @@ export default function Executive(){
     const highIncident=incidents.filter(i=>i.status!=='Closed'&&['High','Critical'].includes(i.severity)).length
     const highRiskCount=highHazards+highIncident
 
+    const verifiedExposure=exposures.filter(e=>e.status==='Verified')
+    const exposureHours=verifiedExposure.reduce((sum,e)=>sum+Number(e.employeeHours??e.employee_hours??0)+Number(e.contractorHours??e.contractor_hours??0),0)
+    const recordableCount=incidents.filter(isRecordableIncident).length
+    const ltiCount=incidents.filter(isLostTimeIncident).length
+    const trif=exposureHours>0?recordableCount*RATE_MULTIPLIER/exposureHours:null
+    const ltifr=exposureHours>0?ltiCount*RATE_MULTIPLIER/exposureHours:null
+
     const dynamicHeat=riskCategories.map(category=>units.map(unit=>{
       const matched=hazards.filter(h=>h.unit===unit&&classifyHazard(h)===category)
       return matched.length?Math.max(...matched.map(riskScore),1):0
@@ -144,10 +158,10 @@ export default function Executive(){
     const months=[];for(let o=11;o>=0;o--){const d=new Date(now.getFullYear(),now.getMonth()-o,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)}
     const obsSeries=months.map(m=>observations.filter(o=>monthKey(o.date||o.observation_date||o.createdAt||o.created_at)===m).length)
     const nearSeries=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)==='Near Miss').length)
-    const recordableSeries=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&(i.type||i.incident_type)!=='Near Miss').length)
+    const recordableSeries=months.map(m=>incidents.filter(i=>monthKey(i.date||i.incident_date||i.createdAt||i.created_at)===m&&isRecordableIncident(i)).length)
     const trendMax=Math.max(1,...obsSeries,...nearSeries,...recordableSeries)
 
-    const incidentBars=incidentTypes.map(type=>({label:type,value:incidents.filter(i=>(i.type||i.incident_type)===type).length,tone:type==='Lost Time Injury'||type==='Fire'?'red':type==='Medical Treatment'?'orange':type==='Near Miss'?'blue':'green'})).filter(x=>x.value>0)
+    const incidentBars=incidentTypes.map(type=>({label:type,value:incidents.filter(i=>(i.type||i.incident_type)===type).length,tone:type==='Lost Time Injury'||type==='Fatality'||type==='Fire'?'red':type==='Medical Treatment'||type==='Restricted Work Case'?'orange':type==='Near Miss'?'blue':'green'})).filter(x=>x.value>0)
     const distribution=incidentBars.length?incidentBars:[{label:'Belum ada data',value:0,tone:'blue'}]
 
     const topRisks=[
@@ -178,11 +192,13 @@ export default function Executive(){
     if(highRiskCount>0) insights.push({tone:'orange',text:`${highRiskCount} risiko/insiden high-critical membutuhkan kontrol prioritas.`})
     if(expiredPermit>0||assetOverdue>0) insights.push({tone:'red',text:`${expiredPermit} permit expired dan ${assetOverdue} asset overdue perlu verifikasi sebelum operasi dilanjutkan.`})
     if(learning.length&&trainingCompliance<100) insights.push({tone:'blue',text:`Kepatuhan training ${trainingCompliance}% dengan ${trainingExpired} record perlu renewal.`})
+    if(!exposureHours) insights.push({tone:'blue',text:'TRIFR/LTIFR belum dihitung karena belum ada exposure hours berstatus Verified pada scope ini.'})
     if(!insights.length) insights.push({tone:'green',text:'Belum ada sinyal prioritas kritis pada scope yang dipilih.'})
 
     return {
       fatality,nearMiss,inspection,unsafeAction,unsafeCondition,overdueActions,closureRate,
       expiredPermit,assetOverdue,assetDueSoon,highRiskCount,heat:heatLive?dynamicHeat:fallbackHeat,heatLive,
+      exposureHours,recordableCount,ltiCount,trif,ltifr,
       trend:{observation:linePoints(obsSeries,trendMax),nearMiss:linePoints(nearSeries,trendMax),recordable:linePoints(recordableSeries,trendMax)},
       distribution,topRisks,trainingCompliance,trainingCount:learning.length,trainingExpired,
       actionBars:[{label:'Closed',value:closedActions,tone:'green'},{label:'In Progress',value:inProgressActions,tone:'blue'},{label:'Open / Overdue',value:openActions,tone:'orange'}],
@@ -211,8 +227,8 @@ export default function Executive(){
     </div>}
 
     <div className="stats-grid six">
-      <StatCard label="TRIFR" value="—" hint="butuh man-hours" tone="green" icon={<TrendingDown/>}/>
-      <StatCard label="LTIFR" value="—" hint="butuh man-hours" tone="blue" icon={<ShieldCheck/>}/>
+      <StatCard label="TRIFR" value={dashboard?.trifr===null||dashboard?.trifr===undefined?'—':dashboard.trifr.toFixed(2)} hint={dashboard?.exposureHours?`${dashboard.recordableCount} recordable / ${formatHours(dashboard.exposureHours)} jam`:'input + verify man-hours'} tone="green" icon={<TrendingDown/>}/>
+      <StatCard label="LTIFR" value={dashboard?.ltifr===null||dashboard?.ltifr===undefined?'—':dashboard.ltifr.toFixed(2)} hint={dashboard?.exposureHours?`${dashboard.ltiCount} LTI / ${formatHours(dashboard.exposureHours)} jam`:'input + verify man-hours'} tone="blue" icon={<ShieldCheck/>}/>
       <StatCard label="Fatality" value={dashboard?.fatality??0} hint="Zero Harm" tone="red" icon={<Siren/>}/>
       <StatCard label="Near Miss" value={dashboard?.nearMiss??0} hint="reported" tone="purple" icon={<Eye/>}/>
       <StatCard label="Inspection" value={dashboard?.inspection??0} hint="inspection & observation" tone="green" icon={<ClipboardCheck/>}/>

@@ -37,6 +37,7 @@ const groups = [
       { href: '/incident', label: 'Incident Management', icon: Siren },
       { href: '/permit-to-work', label: 'Permit to Work', icon: ShieldCheck },
       { href: '/contractor-hse', label: 'Contractor HSE Management', icon: HardHat },
+      { href: '/man-hours', label: 'Man-Hours & HSE Exposure', icon: Activity },
     ],
   },
   {
