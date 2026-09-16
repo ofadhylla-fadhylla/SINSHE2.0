@@ -3,10 +3,44 @@
 import { useEffect, useRef, useState } from 'react'
 import { CENTRAL_SYNC_KEYS, hydrateCentralData, syncLocalModule } from '../lib/central-sync'
 
+const DATA_RESET_VERSION = 'sinshe-real-data-reset-20260916-v1'
+const LEGACY_DATA_KEYS = [
+  ...CENTRAL_SYNC_KEYS,
+  'sinshe-hazards',
+  'sinshe-learning-records',
+  'sinshe-safety-sessions',
+  'sinshe-safety-attendance',
+  'sinshe-jsa-assessments',
+  'sinshe-jsa-steps',
+  'sinshe-reminder-actions',
+  'sinshe-audit-plans',
+  'sinshe-audit-checklist',
+  'sinshe-audit-findings',
+  'sinshe-evidence-documents',
+  'sinshe-qr-inspection-runs',
+  'sinshe-qr-inspection-items',
+  'sinshe-environmental-metrics',
+  'sinshe-environmental-events',
+  'sinshe-gis-points',
+  'sinshe-contractors',
+  'sinshe-contractor-workers',
+  'sinshe-contractor-events',
+  'sinshe-exposure-hours',
+]
+
+function clearLegacyLocalDataOnce() {
+  if (typeof window === 'undefined') return
+  if (window.localStorage.getItem(DATA_RESET_VERSION) === 'done') return
+  LEGACY_DATA_KEYS.forEach(key => window.localStorage.setItem(key, '[]'))
+  window.localStorage.setItem(DATA_RESET_VERSION, 'done')
+}
+
 export default function CentralSync({ enabled = false }) {
   const lastSeen = useRef({})
   const busy = useRef(false)
   const [state, setState] = useState('idle')
+
+  if (enabled && typeof window !== 'undefined') clearLegacyLocalDataOnce()
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return
@@ -21,7 +55,7 @@ export default function CentralSync({ enabled = false }) {
     async function boot() {
       setState('syncing')
       try {
-        await hydrateCentralData({ seedIfEmpty: true })
+        await hydrateCentralData({ seedIfEmpty: false })
         if (cancelled) return
         capture()
         setState('synced')
