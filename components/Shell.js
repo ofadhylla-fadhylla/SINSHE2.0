@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch, FolderOpen,
-  Gauge, GraduationCap, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
+  Gauge, GraduationCap, HardHat, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -36,6 +36,7 @@ const groups = [
       { href: '/corrective-action', label: 'Corrective Action Tracking', icon: ListTodo },
       { href: '/incident', label: 'Incident Management', icon: Siren },
       { href: '/permit-to-work', label: 'Permit to Work', icon: ShieldCheck },
+      { href: '/contractor-hse', label: 'Contractor HSE Management', icon: HardHat },
     ],
   },
   {
