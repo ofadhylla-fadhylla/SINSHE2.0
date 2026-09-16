@@ -20,6 +20,8 @@ const ASSET_KEY='sinshe-assets'
 const OBS_KEY='sinshe-observations'
 const CA_KEY='sinshe-corrective-actions'
 const BUCKET='sinshe-evidence'
+const JSQR_SRC='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'
+let jsQrLoader=null
 
 const templates={
   Boiler:[
@@ -85,6 +87,28 @@ const riskTone=value=>value==='Critical'?'red':value==='High'?'orange':value==='
 const dueForRisk=risk=>risk==='Critical'?addDays(1):risk==='High'?addDays(3):risk==='Medium'?addDays(7):addDays(14)
 const safeName=value=>String(value||'file').replace(/[^a-zA-Z0-9._-]+/g,'-').slice(-90)
 
+function ensureJsQr(){
+  if(typeof window==='undefined')return Promise.reject(new Error('Browser tidak tersedia.'))
+  if(window.jsQR)return Promise.resolve(window.jsQR)
+  if(jsQrLoader)return jsQrLoader
+  jsQrLoader=new Promise((resolve,reject)=>{
+    const existing=document.querySelector('script[data-sinshe-jsqr="1"]')
+    if(existing){
+      existing.addEventListener('load',()=>window.jsQR?resolve(window.jsQR):reject(new Error('QR decoder gagal dimuat.')),{once:true})
+      existing.addEventListener('error',()=>reject(new Error('QR decoder gagal dimuat.')),{once:true})
+      return
+    }
+    const script=document.createElement('script')
+    script.src=JSQR_SRC
+    script.async=true
+    script.dataset.sinsheJsqr='1'
+    script.onload=()=>window.jsQR?resolve(window.jsQR):reject(new Error('QR decoder gagal dimuat.'))
+    script.onerror=()=>reject(new Error('QR decoder gagal dimuat. Periksa koneksi internet.'))
+    document.head.appendChild(script)
+  })
+  return jsQrLoader
+}
+
 function assetFromDb(r){return{
   id:r.id,companyCode:r.company_code||'',name:r.name||'',category:r.category||'',unit:r.unit||'',operational:r.operational||'Active',monitoring:r.monitoring||'Online',
   year:r.manufacture_year||'',manufacturer:r.manufacturer||'',capacity:r.capacity||'',workingPressure:r.working_pressure||'',riksaDue:r.riksa_due||'',sioDue:r.sio_due||'',siloDue:r.silo_due||'',calibrationDue:r.calibration_due||'',serial:r.serial||'',owner:r.owner||'',notes:r.notes||''
@@ -114,8 +138,11 @@ export default function QrInspection(){
   const [scannerOpen,setScannerOpen]=useState(false)
   const [cameraStream,setCameraStream]=useState(null)
   const [scanning,setScanning]=useState(false)
+  const [scannerMessage,setScannerMessage]=useState('Menyiapkan kamera…')
   const videoRef=useRef(null)
+  const canvasRef=useRef(null)
   const detectorRef=useRef(null)
+  const scannerModeRef=useRef('native')
   const scanTimerRef=useRef(null)
   const queryHandled=useRef(false)
   const profile=getStoredProfile()
@@ -150,17 +177,32 @@ export default function QrInspection(){
 
   useEffect(()=>{
     if(!scannerOpen||!cameraStream||!videoRef.current)return
-    videoRef.current.srcObject=cameraStream
-    videoRef.current.play().catch(()=>{})
+    const video=videoRef.current
+    video.srcObject=cameraStream
+    video.play().catch(()=>{})
     setScanning(true)
+    setScannerMessage('Arahkan QR ke kotak kamera…')
     let cancelled=false
     async function tick(){
-      if(cancelled||!videoRef.current||!detectorRef.current)return
+      if(cancelled||!videoRef.current)return
       try{
-        const codes=await detectorRef.current.detect(videoRef.current)
-        if(codes?.[0]?.rawValue){resolveCode(codes[0].rawValue);stopScanner();return}
+        let raw=''
+        if(scannerModeRef.current==='native'&&detectorRef.current){
+          const codes=await detectorRef.current.detect(videoRef.current)
+          raw=codes?.[0]?.rawValue||''
+        }else if(window.jsQR&&video.videoWidth>0&&video.videoHeight>0){
+          const canvas=canvasRef.current
+          if(canvas){
+            canvas.width=video.videoWidth;canvas.height=video.videoHeight
+            const ctx=canvas.getContext('2d',{willReadFrequently:true})
+            ctx.drawImage(video,0,0,canvas.width,canvas.height)
+            const image=ctx.getImageData(0,0,canvas.width,canvas.height)
+            raw=window.jsQR(image.data,image.width,image.height,{inversionAttempts:'attemptBoth'})?.data||''
+          }
+        }
+        if(raw){resolveCode(raw);stopScanner();return}
       }catch{}
-      scanTimerRef.current=setTimeout(tick,350)
+      scanTimerRef.current=setTimeout(tick,250)
     }
     tick()
     return()=>{cancelled=true;if(scanTimerRef.current)clearTimeout(scanTimerRef.current)}
@@ -180,18 +222,44 @@ export default function QrInspection(){
   function flash(text){setNotice(text);setTimeout(()=>setNotice(''),3600)}
   function stopScanner(){
     if(scanTimerRef.current)clearTimeout(scanTimerRef.current)
-    setScanning(false);setScannerOpen(false)
+    setScanning(false);setScannerOpen(false);setScannerMessage('Menyiapkan kamera…')
     if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());setCameraStream(null)}
   }
   async function startScanner(){
     if(!canManage){flash('Role Viewer hanya dapat melihat QR Inspection.');return}
-    if(typeof window==='undefined'||!navigator.mediaDevices?.getUserMedia){flash('Camera API tidak tersedia di browser ini. Gunakan input kode manual.');return}
-    if(!('BarcodeDetector' in window)){flash('QR scanner native belum didukung browser ini. Gunakan input Asset ID / Serial secara manual.');return}
+    if(typeof window==='undefined'||!navigator.mediaDevices?.getUserMedia){flash('Camera API tidak tersedia di browser ini. Buka SINSHE melalui HTTPS di Chrome/Safari terbaru.');return}
     try{
-      detectorRef.current=new window.BarcodeDetector({formats:['qr_code']})
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false})
-      setCameraStream(stream);setScannerOpen(true)
-    }catch(err){flash(`Kamera tidak dapat dibuka: ${err.message}`)}
+      if('BarcodeDetector' in window){
+        try{detectorRef.current=new window.BarcodeDetector({formats:['qr_code']});scannerModeRef.current='native'}
+        catch{await ensureJsQr();detectorRef.current=null;scannerModeRef.current='jsqr'}
+      }else{
+        await ensureJsQr();detectorRef.current=null;scannerModeRef.current='jsqr'
+      }
+      setScannerOpen(true)
+      setScannerMessage('Meminta izin kamera…')
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false})
+      setCameraStream(stream)
+    }catch(err){
+      setScannerOpen(false)
+      const name=err?.name||''
+      if(name==='NotAllowedError'||name==='PermissionDeniedError')flash('Izin kamera ditolak. Izinkan Camera untuk sinshe2-0.vercel.app di pengaturan browser lalu tekan Scan QR lagi.')
+      else if(name==='NotFoundError'||name==='DevicesNotFoundError')flash('Kamera tidak ditemukan pada perangkat ini.')
+      else flash(`Kamera/QR scanner tidak dapat dibuka: ${err?.message||'Unknown error'}`)
+    }
+  }
+  async function scanImageFile(file){
+    if(!file)return
+    try{
+      await ensureJsQr()
+      const url=URL.createObjectURL(file)
+      const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=url})
+      const canvas=document.createElement('canvas');canvas.width=image.naturalWidth||image.width;canvas.height=image.naturalHeight||image.height
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,canvas.width,canvas.height)
+      const data=ctx.getImageData(0,0,canvas.width,canvas.height)
+      URL.revokeObjectURL(url)
+      const raw=window.jsQR(data.data,data.width,data.height,{inversionAttempts:'attemptBoth'})?.data
+      if(raw){resolveCode(raw);stopScanner()}else flash('QR tidak terbaca dari foto. Pastikan QR memenuhi frame dan tidak blur.')
+    }catch(err){flash(`Foto QR gagal dibaca: ${err?.message||'Unknown error'}`)}
   }
   function resolveCode(raw){
     const value=String(raw||'').trim();if(!value){flash('Kode QR kosong.');return}
@@ -316,8 +384,8 @@ export default function QrInspection(){
       <div className="table-wrap"><table><thead><tr><th>Run</th><th>PT</th><th>Asset</th><th>Unit</th><th>Inspector</th><th>Date</th><th>Findings</th><th>Score</th><th>Status</th></tr></thead><tbody>{rows.map(r=>{const list=items.filter(i=>i.runId===r.id),ng=list.filter(i=>i.result==='NG').length;return <tr key={r.id} onClick={()=>setActiveRunId(r.id)} className={activeRunId===r.id?styles.selectedRow:''}><td><b>{r.id}</b></td><td><b>{r.companyCode||'-'}</b></td><td><b>{r.targetName}</b><small className={styles.block}>{r.targetId}</small></td><td>{r.unit}</td><td>{r.inspector}</td><td>{fmt(r.inspectionDate)}</td><td>{ng?<Badge tone="red">{ng} NG</Badge>:<Badge tone="green">0</Badge>}</td><td>{r.score===null||r.score===undefined?'-':`${r.score}%`}</td><td><Badge tone={statusTone(r.status)}>{r.status}</Badge></td></tr>})}{!rows.length&&<tr><td colSpan="9" className={styles.empty}>Belum ada QR inspection pada scope ini.</td></tr>}</tbody></table></div>
     </Panel>
 
-    <div className={styles.info}><Camera size={19}/><div><b>Photo evidence terhubung ke Document & Evidence.</b><span>Foto checkpoint disimpan di private Supabase Storage. Browser yang belum mendukung BarcodeDetector tetap dapat memakai Asset ID/Serial manual.</span></div></div>
+    <div className={styles.info}><Camera size={19}/><div><b>Scanner QR menggunakan kamera perangkat.</b><span>Izinkan akses Camera saat browser meminta permission. Jika live scan sulit membaca QR, gunakan tombol Ambil Foto QR sebagai fallback.</span></div></div>
 
-    {scannerOpen&&<div className={styles.backdrop}><div className={styles.scannerModal}><div className={styles.modalHead}><div><span>QR SCANNER</span><h2>Arahkan kamera ke QR asset</h2></div><button onClick={stopScanner}><X size={20}/></button></div><video ref={videoRef} className={styles.video} playsInline muted/><div className={styles.scanLine}/><p>{scanning?'Scanning QR…':'Menyiapkan kamera…'}</p></div></div>}
+    {scannerOpen&&<div className={styles.backdrop}><div className={styles.scannerModal}><div className={styles.modalHead}><div><span>QR SCANNER</span><h2>Arahkan kamera ke QR asset</h2></div><button onClick={stopScanner}><X size={20}/></button></div><video ref={videoRef} className={styles.video} playsInline muted/><canvas ref={canvasRef} style={{display:'none'}}/><div className={styles.scanLine}/><p>{scanning?scannerMessage:'Menyiapkan kamera…'}</p><label className={styles.secondary} style={{marginTop:10,cursor:'pointer'}}>Ambil Foto QR<input type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>scanImageFile(e.target.files?.[0]||null)}/></label></div></div>}
   </Shell>
 }
