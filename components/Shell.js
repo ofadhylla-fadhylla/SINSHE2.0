@@ -29,6 +29,7 @@ const groups = [
     items: [
       { href: '/safety-briefing', label: 'Safety Briefing & Induction', icon: Users },
       { href: '/learning-competency', label: 'Learning & Competency', icon: GraduationCap },
+      { href: '/ppe-management', label: 'APD Management', icon: HardHat },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/digital-jsa', label: 'Digital JSA', icon: FileSearch },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
