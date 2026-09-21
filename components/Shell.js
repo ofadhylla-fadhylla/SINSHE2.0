@@ -31,6 +31,7 @@ const groups = [
       { href: '/learning-competency', label: 'Learning & Competency', icon: GraduationCap },
       { href: '/ppe-management', label: 'APD Management', icon: HardHat },
       { href: '/p3k-management', label: 'P3K / First Aid Management', icon: ClipboardCheck },
+      { href: '/p2k3l-management', label: 'P2K3L Management', icon: Users },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/digital-jsa', label: 'Digital JSA', icon: FileSearch },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
