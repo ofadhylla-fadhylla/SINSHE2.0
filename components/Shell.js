@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity, AlertTriangle, BarChart3, Bell, BrainCircuit, ClipboardCheck, ClipboardList, FileCheck2, FileSearch, FolderOpen,
-  Gauge, GraduationCap, HardHat, LayoutDashboard, ListTodo, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
+  Gauge, GraduationCap, HardHat, LayoutDashboard, ListTodo, Lock, LogIn, LogOut, Map as MapIcon, Menu, Network, QrCode, ScanLine, Search,
   ShieldCheck, Siren, Smartphone, Settings, UserCircle2, Users, Wrench, X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -33,6 +33,7 @@ const groups = [
       { href: '/p3k-management', label: 'P3K / First Aid Management', icon: ClipboardCheck },
       { href: '/p2k3l-management', label: 'P2K3L Management', icon: Users },
       { href: '/safety-violation', label: 'Safety Violation Ticket', icon: AlertTriangle },
+      { href: '/loto-management', label: 'LOTO Management', icon: Lock },
       { href: '/hazard-risk', label: 'Hazard & Risk Management', icon: AlertTriangle },
       { href: '/digital-jsa', label: 'Digital JSA', icon: FileSearch },
       { href: '/inspection', label: 'Inspection & Observation', icon: ClipboardCheck },
