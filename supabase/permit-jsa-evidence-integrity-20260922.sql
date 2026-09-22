@@ -14,6 +14,10 @@ BEGIN
   END IF;
 END $$;
 
+CREATE INDEX IF NOT EXISTS permits_jsa_no_idx
+ON public.permits(jsa_no)
+WHERE jsa_no IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.validate_permit_integrity()
 RETURNS trigger
 LANGUAGE plpgsql
