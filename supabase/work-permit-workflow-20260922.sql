@@ -50,6 +50,7 @@ create table if not exists public.permit_events (
 
 create index if not exists permit_events_permit_created_idx on public.permit_events(permit_id, created_at desc);
 create index if not exists permit_events_company_unit_idx on public.permit_events(company_code, unit);
+create index if not exists permit_events_created_by_idx on public.permit_events(created_by) where created_by is not null;
 create index if not exists permits_loto_ref_idx on public.permits(loto_ref) where loto_ref is not null;
 create index if not exists permits_status_end_idx on public.permits(status, end_at);
 
