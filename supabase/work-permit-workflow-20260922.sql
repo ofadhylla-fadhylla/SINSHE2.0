@@ -55,6 +55,7 @@ create index if not exists permits_status_end_idx on public.permits(status, end_
 
 alter table public.permit_events enable row level security;
 revoke all on table public.permit_events from anon;
+revoke all on table public.permit_events from authenticated;
 grant select, insert on table public.permit_events to authenticated;
 
 do $$ begin create policy permit_events_select on public.permit_events for select to authenticated using (public.can_view_unit(unit)); exception when duplicate_object then null; end $$;
