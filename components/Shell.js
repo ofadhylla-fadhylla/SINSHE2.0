@@ -19,7 +19,6 @@ const groups = [
   {
     title: 'OVERVIEW',
     items: [
-      { href: '/', label: 'Executive Dashboard', icon: LayoutDashboard },
       { href: '/enterprise-dashboard', label: 'Enterprise Dashboard', icon: LayoutDashboard },
       { href: '/ecosystem', label: 'Ecosystem', icon: Network },
       { href: '/kpi', label: 'KPI Dashboard', icon: BarChart3 },
