@@ -5,7 +5,7 @@ import { useEffect,useMemo,useState } from 'react'
 import Shell from '../../components/Shell'
 import CompanyScopeBar from '../../components/CompanyScopeBar'
 import { Badge,Panel } from '../../components/Ui'
-import { Activity,AlertTriangle,BarChart3,BrainCircuit,Building2,CheckCircle2,ChevronRight,FileCheck2,GraduationCap,Leaf,ShieldCheck,Wrench } from 'lucide-react'
+import { Activity,AlertTriangle,BarChart3,BrainCircuit,ChevronRight,FileCheck2,GraduationCap,Leaf,ShieldCheck,Wrench } from 'lucide-react'
 import { dbSelect } from '../../lib/supabase-rest'
 import { DEFAULT_COMPANY_FILTERS,companyCodeOf,filteredCompanies } from '../../lib/company-master'
 import { PROJECTED_NOTE,assetPriority,complianceItemRisk,daysTo,esgScores,field,isClosed,loadIntelligence } from '../../lib/intelligence-engine'
@@ -17,7 +17,7 @@ const textStatus=v=>String(v||'').toLowerCase()
 
 export default function EnterpriseDashboard(){
  const[data,setData]=useState(null),[readiness,setReadiness]=useState([]),[alerts,setAlerts]=useState([])
- const[filters,setFilters]=useState(DEFAULT_COMPANY_FILTERS),[view,setView]=useState('executive')
+ const[filters,setFilters]=useState(DEFAULT_COMPANY_FILTERS),[view,setView]=useState(null)
  const[unitFilter,setUnitFilter]=useState('All'),[areaFilter,setAreaFilter]=useState('All'),[picFilter,setPicFilter]=useState('All')
 
  useEffect(()=>{
@@ -99,22 +99,28 @@ export default function EnterpriseDashboard(){
 
  const criticalDrill=drillRows.filter(r=>r.severity==='Critical').length,highDrill=drillRows.filter(r=>r.severity==='High').length
 
- return <Shell title="Enterprise Dashboard" subtitle="Executive → Operational → Unit → Area → PIC → Action">
+ return <Shell title="Enterprise Dashboard" subtitle="Pilih Executive atau Operational View untuk membuka dashboard.">
   <CompanyScopeBar filters={filters} onChange={setFilters} onReset={()=>setFilters(DEFAULT_COMPANY_FILTERS)}/>
 
-  <section className={styles.hero}>
-   <div className={styles.heroTitle}><span>SINSHE 2.0</span><h2>Enterprise Dashboard</h2><p>Satu dashboard untuk keputusan strategis dan tindak lanjut operasional.</p></div>
-   <div className={styles.branchLine}/>
-   <div className={styles.branches}>
-    <button className={`${styles.viewButton} ${view==='executive'?styles.active:''}`} onClick={()=>setView('executive')}>
-     <b>EXECUTIVE VIEW</b><small>Ringkasan untuk management: Strategic KPI, Business Impact, Risk Overview, ESG dan Compliance.</small>
-     <div className={styles.viewTags}><span>Strategic KPI</span><span>Business Impact</span><span>Risk Overview</span><span>ESG</span><span>Compliance</span></div>
+  <section className={styles.selectorPanel}>
+   <div className={styles.selectorIntro}>
+    <span>SINSHE 2.0</span>
+    <h2>Pilih Tampilan Dashboard</h2>
+    <p>Pilih satu tampilan sesuai kebutuhan. Informasi detail hanya muncul setelah view dipilih.</p>
+   </div>
+   <div className={styles.selectorGrid}>
+    <button className={`${styles.selectorCard} ${view==='executive'?styles.selectorActive:''}`} onClick={()=>setView('executive')}>
+     <div className={styles.selectorIcon}><BarChart3 size={22}/></div>
+     <div className={styles.selectorCopy}><b>Executive View</b><small>Strategic KPI, Business Impact, Risk Overview, ESG dan Compliance.</small></div>
+     <ChevronRight size={20}/>
     </button>
-    <button className={`${styles.viewButton} ${view==='operational'?styles.active:''}`} onClick={()=>setView('operational')}>
-     <b>OPERATIONAL VIEW</b><small>Monitoring pelaksanaan lapangan: Safety, Competency, Asset, Environment dan Compliance.</small>
-     <div className={styles.viewTags}><span>Safety</span><span>Competency</span><span>Asset</span><span>Environment</span><span>Compliance</span></div>
+    <button className={`${styles.selectorCard} ${view==='operational'?styles.selectorActive:''}`} onClick={()=>setView('operational')}>
+     <div className={styles.selectorIcon}><Activity size={22}/></div>
+     <div className={styles.selectorCopy}><b>Operational View</b><small>Safety, Competency, Asset, Environment dan Compliance.</small></div>
+     <ChevronRight size={20}/>
     </button>
    </div>
+   {!view&&<div className={styles.selectorEmpty}>Pilih salah satu view di atas untuk menampilkan dashboard.</div>}
   </section>
 
   {view==='executive'&&<>
@@ -146,30 +152,24 @@ export default function EnterpriseDashboard(){
    </div>
   </>}
 
-  <section className={styles.flow}>
-   <div className={styles.flowTitle}>DRILL-DOWN</div><div className={styles.arrow}>↓</div>
-   <div className={styles.drillGrid}>
-    <div className={styles.drillStep}><label>1 · Unit</label><select value={unitFilter} onChange={e=>setUnitFilter(e.target.value)}><option value="All">Semua Unit</option>{units.map(v=><option key={v}>{v}</option>)}</select></div>
-    <div className={styles.drillStep}><label>2 · Area</label><select value={areaFilter} onChange={e=>setAreaFilter(e.target.value)}><option value="All">Semua Area</option>{areas.map(v=><option key={v}>{v}</option>)}</select></div>
-    <div className={styles.drillStep}><label>3 · PIC</label><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">Semua PIC</option>{pics.map(v=><option key={v}>{v}</option>)}</select></div>
-   </div>
-   <div className={styles.arrow}>↓</div><div className={styles.flowTitle}>ACTION</div>
-   <div className={styles.actionSummary}><span>{drillRows.length} action</span><span>{criticalDrill} critical</span><span>{highDrill} high</span><span>Scope: {filters.company==='All'?'Semua PT':filters.company}</span></div>
-  </section>
+  {view&&<>
+   <section className={styles.flow}>
+    <div className={styles.flowTitle}>DRILL-DOWN</div><div className={styles.arrow}>↓</div>
+    <div className={styles.drillGrid}>
+     <div className={styles.drillStep}><label>1 · Unit</label><select value={unitFilter} onChange={e=>setUnitFilter(e.target.value)}><option value="All">Semua Unit</option>{units.map(v=><option key={v}>{v}</option>)}</select></div>
+     <div className={styles.drillStep}><label>2 · Area</label><select value={areaFilter} onChange={e=>setAreaFilter(e.target.value)}><option value="All">Semua Area</option>{areas.map(v=><option key={v}>{v}</option>)}</select></div>
+     <div className={styles.drillStep}><label>3 · PIC</label><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">Semua PIC</option>{pics.map(v=><option key={v}>{v}</option>)}</select></div>
+    </div>
+    <div className={styles.arrow}>↓</div><div className={styles.flowTitle}>ACTION</div>
+    <div className={styles.actionSummary}><span>{drillRows.length} action</span><span>{criticalDrill} critical</span><span>{highDrill} high</span><span>Scope: {filters.company==='All'?'Semua PT':filters.company}</span></div>
+   </section>
 
-  <Panel title="Action Queue — Unit → Area → PIC" action={`${drillRows.length} item`} className="mt">
-   <div className="table-wrap"><table><thead><tr><th>Severity</th><th>PT</th><th>Unit</th><th>Area</th><th>PIC</th><th>Action / Item</th><th>Due</th><th></th></tr></thead><tbody>
-    {drillRows.slice(0,100).map((a,i)=><tr key={`${a.source}-${a.record_id}-${i}`}><td><Badge tone={sevTone(a.severity)}>{a.severity}</Badge></td><td><b>{a.company_code||'-'}</b></td><td>{a.unit}</td><td>{a.area}</td><td>{a.pic}</td><td><b>{a.alert_type}</b><small className={styles.block}>{a.title} • {a.source}</small></td><td>{a.due_date||'-'}<small className={styles.block}>{a.days_to_due===null?'':a.days_to_due<0?`${Math.abs(a.days_to_due)} hari overdue`:`${a.days_to_due} hari lagi`}</small></td><td><Link className={styles.actionLink} href={a.route||'/enterprise-alerts'}><Badge tone="blue">Open <ChevronRight size={11}/></Badge></Link></td></tr>)}
-    {!drillRows.length&&<tr><td colSpan="8" className={styles.empty}>Tidak ada action pada kombinasi Unit, Area dan PIC yang dipilih.</td></tr>}
-   </tbody></table></div>
-  </Panel>
-
-  <Panel title="Dashboard Architecture" className="mt"><div className={styles.domainGrid}>
-   <div className={styles.domain}><div className={styles.domainTop}><b>Executive</b><BarChart3 size={18}/></div><small>Strategic KPI • Business Impact • Risk Overview • ESG • Compliance</small></div>
-   <div className={styles.domain}><div className={styles.domainTop}><b>Operational</b><Activity size={18}/></div><small>Safety • Competency • Asset • Environment • Compliance</small></div>
-   <div className={styles.domain}><div className={styles.domainTop}><b>Drill-down</b><Building2 size={18}/></div><small>PT → Unit → Area → PIC → Action</small></div>
-   <div className={styles.domain}><div className={styles.domainTop}><b>Action Control</b><CheckCircle2 size={18}/></div><small>Enterprise Alert Center dan Reminder Engine menjadi jalur tindak lanjut.</small></div>
-   <div className={styles.domain}><div className={styles.domainTop}><b>Predictive Layer</b><BrainCircuit size={18}/></div><small>{PROJECTED_NOTE}</small></div>
-  </div></Panel>
+   <Panel title="Action Queue — Unit → Area → PIC" action={`${drillRows.length} item`} className="mt">
+    <div className="table-wrap"><table><thead><tr><th>Severity</th><th>PT</th><th>Unit</th><th>Area</th><th>PIC</th><th>Action / Item</th><th>Due</th><th></th></tr></thead><tbody>
+     {drillRows.slice(0,100).map((a,i)=><tr key={`${a.source}-${a.record_id}-${i}`}><td><Badge tone={sevTone(a.severity)}>{a.severity}</Badge></td><td><b>{a.company_code||'-'}</b></td><td>{a.unit}</td><td>{a.area}</td><td>{a.pic}</td><td><b>{a.alert_type}</b><small className={styles.block}>{a.title} • {a.source}</small></td><td>{a.due_date||'-'}<small className={styles.block}>{a.days_to_due===null?'':a.days_to_due<0?`${Math.abs(a.days_to_due)} hari overdue`:`${a.days_to_due} hari lagi`}</small></td><td><Link className={styles.actionLink} href={a.route||'/enterprise-alerts'}><Badge tone="blue">Open <ChevronRight size={11}/></Badge></Link></td></tr>)}
+     {!drillRows.length&&<tr><td colSpan="8" className={styles.empty}>Tidak ada action pada kombinasi Unit, Area dan PIC yang dipilih.</td></tr>}
+    </tbody></table></div>
+   </Panel>
+  </>}
  </Shell>
 }
