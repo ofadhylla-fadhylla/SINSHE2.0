@@ -1,18 +1,22 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { unzipSync } from 'fflate'
 import Shell from '../../components/Shell'
 import CompanyScopeBar from '../../components/CompanyScopeBar'
 import { Badge, Panel, Progress, StatCard } from '../../components/Ui'
 import {
   BookOpen, Camera, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, Copy, Download,
-  ExternalLink, GraduationCap, LocateFixed, MapPin, PlayCircle, Plus, QrCode, Search, ShieldCheck,
-  UserCheck, Users, X
+  ExternalLink, GraduationCap, LocateFixed, MapPin, Maximize2, PlayCircle, Plus, QrCode, Search,
+  ShieldCheck, UploadCloud, UserCheck, Users, X
 } from 'lucide-react'
 import { COMPANY_MASTER, DEFAULT_COMPANY_FILTERS, companyCodeOf, filteredCompanies } from '../../lib/company-master'
-import { SAFETY_BRIEFING_MATERIALS, SAFETY_MATERIAL_CATEGORIES, safetyMaterialById } from '../../lib/safety-briefing-materials'
+import {
+  SAFETY_BRIEFING_MATERIALS, SAFETY_MATERIAL_CATEGORIES, safetyMaterialById, safetyMaterialStoragePath,
+} from '../../lib/safety-briefing-materials'
 import { dbSelect, dbUpsert, isSupabaseConfigured, storageSignedUrl, storageUpload } from '../../lib/supabase-rest'
 import styles from './safety-briefing.module.css'
+import presenter from './presenter.module.css'
 
 const SESSION_KEY = 'sinshe-safety-sessions'
 const ATTENDANCE_KEY = 'sinshe-safety-attendance'
@@ -43,6 +47,13 @@ function cleanTime(value){ return value?String(value).slice(0,5):'' }
 function safeFileName(value){ return String(value||'photo.jpg').normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/-+/g,'-').slice(0,120) || 'photo.jpg' }
 function hasGpsCoords(lat,lng){ return lat!==null&&lat!==undefined&&lat!==''&&lng!==null&&lng!==undefined&&lng!==''&&Number.isFinite(Number(lat))&&Number.isFinite(Number(lng)) }
 function coord(value){ return value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value)) ? Number(value).toFixed(6) : '-' }
+function zipMaterialId(path){
+  const name=String(path||'').split('/').pop()||''
+  const match=name.match(/^(\d{1,2})\./)
+  if(!match)return null
+  const id=Number(match[1])
+  return id>=1&&id<=41?id:null
+}
 
 function sessionFromDb(r){ return {
   id:r.id, companyCode:r.company_code||'', type:r.session_type, title:r.title, date:r.session_date,
@@ -111,6 +122,13 @@ export default function SafetyBriefing(){
   const [sessionSaving,setSessionSaving]=useState(false)
   const [notice,setNotice]=useState('')
   const [syncLabel,setSyncLabel]=useState('Local ready')
+  const [presenterOpen,setPresenterOpen]=useState(false)
+  const [previewMaterialId,setPreviewMaterialId]=useState(null)
+  const [materialUrls,setMaterialUrls]=useState({})
+  const [materialLoadingId,setMaterialLoadingId]=useState(null)
+  const [materialMissing,setMaterialMissing]=useState({})
+  const [zipImporting,setZipImporting]=useState(false)
+  const [zipProgress,setZipProgress]=useState({done:0,total:0,label:''})
 
   useEffect(()=>{
     let active=true
@@ -168,6 +186,8 @@ export default function SafetyBriefing(){
     return SAFETY_BRIEFING_MATERIALS.filter(m=>(materialCategory==='All'||m.category===materialCategory)&&(!q||`${m.id} ${m.code} ${m.title} ${m.category}`.toLowerCase().includes(q)))
   },[materialSearch,materialCategory])
   const chosenMaterial=safetyMaterialById(sessionForm.materialId)
+  const activePresenterMaterial=safetyMaterialById(selected?.materialId)
+  const previewMaterial=safetyMaterialById(previewMaterialId)
 
   useEffect(()=>{
     let active=true
@@ -177,7 +197,9 @@ export default function SafetyBriefing(){
     return()=>{active=false}
   },[selected?.photoPath])
 
-  function flash(text){ setNotice(text); setTimeout(()=>setNotice(''),3400) }
+  useEffect(()=>{ setPresenterOpen(false) },[selected?.id])
+
+  function flash(text){ setNotice(text); setTimeout(()=>setNotice(''),4200) }
   function updateSessionForm(field,value){ setSessionForm(prev=>({...prev,[field]:value})) }
   function openCreateSession(){
     if(photoPreview) URL.revokeObjectURL(photoPreview)
@@ -187,6 +209,77 @@ export default function SafetyBriefing(){
   function selectMaterial(material){
     setSessionForm(prev=>({...prev,materialId:material.id,materialTitle:material.title,topic:material.title,materialRef:`${material.code} • ${material.source}`,title:prev.title||material.title}))
   }
+
+  async function resolveMaterialUrl(id,{force=false}={}){
+    const n=Number(id)
+    if(!n)return ''
+    if(!force&&materialUrls[n])return materialUrls[n]
+    if(!isSupabaseConfigured()){setMaterialMissing(prev=>({...prev,[n]:true}));return ''}
+    setMaterialLoadingId(n)
+    setMaterialMissing(prev=>({...prev,[n]:false}))
+    try{
+      const path=safetyMaterialStoragePath(n)
+      if(!path)throw new Error('Path materi tidak ditemukan.')
+      const url=await storageSignedUrl(EVIDENCE_BUCKET,path,3600)
+      setMaterialUrls(prev=>({...prev,[n]:url}))
+      return url
+    }catch{
+      setMaterialMissing(prev=>({...prev,[n]:true}))
+      return ''
+    }finally{
+      setMaterialLoadingId(current=>current===n?null:current)
+    }
+  }
+
+  async function openPresenter(){
+    if(!selected?.materialId){flash('Session ini belum memiliki materi.');return}
+    setPresenterOpen(true)
+    await resolveMaterialUrl(selected.materialId)
+  }
+  async function openMaterialPreview(id){
+    if(!id)return
+    setPreviewMaterialId(Number(id))
+    await resolveMaterialUrl(id)
+  }
+
+  async function importMaterialZip(e){
+    const file=e.target.files?.[0]
+    e.target.value=''
+    if(!file)return
+    if(!/\.zip$/i.test(file.name)){flash('Pilih file ZIP materi Safety Briefing.');return}
+    if(!isSupabaseConfigured()){flash('Central storage belum tersedia.');return}
+    setZipImporting(true)
+    setZipProgress({done:0,total:0,label:'Membaca ZIP…'})
+    try{
+      const bytes=new Uint8Array(await file.arrayBuffer())
+      const archive=unzipSync(bytes)
+      const materials=Object.entries(archive).map(([path,data])=>({path,data,id:zipMaterialId(path)})).filter(item=>item.id&&item.data?.length)
+      const unique=new Map()
+      materials.forEach(item=>{ if(!unique.has(item.id))unique.set(item.id,item) })
+      const rows=[...unique.values()].sort((a,b)=>a.id-b.id)
+      if(!rows.length)throw new Error('Tidak ditemukan file materi bernomor 1–41 di dalam ZIP.')
+      setZipProgress({done:0,total:rows.length,label:`0/${rows.length} materi`})
+      let done=0
+      const importedIds=[]
+      for(const item of rows){
+        const blob=new Blob([item.data],{type:'image/png'})
+        await storageUpload(EVIDENCE_BUCKET,safetyMaterialStoragePath(item.id),blob,{upsert:true})
+        done+=1; importedIds.push(item.id)
+        setZipProgress({done,total:rows.length,label:`${done}/${rows.length} materi`})
+      }
+      setMaterialUrls(prev=>{const next={...prev}; importedIds.forEach(id=>delete next[id]); return next})
+      setMaterialMissing(prev=>{const next={...prev}; importedIds.forEach(id=>delete next[id]); return next})
+      flash(`${done} materi berhasil diimport ke central storage SINSHE.`)
+      const refreshId=previewMaterialId||sessionForm.materialId||selected?.materialId
+      if(refreshId)await resolveMaterialUrl(refreshId,{force:true})
+    }catch(err){
+      flash(`Import ZIP gagal: ${err.message}`)
+    }finally{
+      setZipImporting(false)
+      setZipProgress({done:0,total:0,label:''})
+    }
+  }
+
   function captureGps(){
     if(typeof navigator==='undefined'||!navigator.geolocation){flash('GPS / Geolocation tidak tersedia pada perangkat ini.');return}
     setGpsBusy(true)
@@ -319,8 +412,10 @@ export default function SafetyBriefing(){
   const selectedReady=selectedAttendance.filter(a=>attendeeReady(selected||{},a)).length
   const selectedCompletion=selectedPresent?Math.round(selectedReady/selectedPresent*100):0
   const hasGps=selected&&hasGpsCoords(selected.latitude,selected.longitude)
+  const presenterUrl=activePresenterMaterial?materialUrls[activePresenterMaterial.id]||'':''
+  const previewUrl=previewMaterial?materialUrls[previewMaterial.id]||'':''
 
-  return <Shell title="Safety Briefing & Induction" subtitle="Buat session, pilih materi, dokumentasikan GPS & foto, lalu kelola attendance dan competency hand-off.">
+  return <Shell title="Safety Briefing & Induction" subtitle="Pilih materi, buka Presenter Mode, dokumentasikan GPS & foto, lalu kelola attendance dan competency hand-off.">
     <CompanyScopeBar filters={filters} onChange={setFilters}/>
     {notice&&<div className={styles.notice}><CheckCircle2 size={18}/>{notice}</div>}
 
@@ -332,7 +427,7 @@ export default function SafetyBriefing(){
     </div>
 
     <div className={styles.toolbar}>
-      <div><h2>Briefing & Induction Register</h2><p>Alur baru: Buat Session → Pilih Materi → Form → Attendance & Completion.</p></div>
+      <div><h2>Briefing & Induction Register</h2><p>Buat Session → Pilih Materi → Form → Presenter Mode + Attendance.</p></div>
       <div className={styles.actions}><button className={styles.secondary} onClick={exportCSV}><Download size={17}/> Export CSV</button><button className={styles.primary} onClick={openCreateSession}><Plus size={18}/> Buat Session</button></div>
     </div>
 
@@ -354,26 +449,39 @@ export default function SafetyBriefing(){
     </Panel>
 
     {selected&&<div className="dashboard-split mt">
-      <Panel title="Session Detail" action={selected.id}>
-        <div className={styles.detailTop}><div><Badge tone={typeTone(selected.type)}>{selected.type}</Badge><h3>{selected.title}</h3><p>{fmt(selected.date)} • {selected.startTime||'-'}{selected.endTime?`–${selected.endTime}`:''} • {selected.unit} / {selected.location}</p></div><Badge tone={statusTone(selected.status)}>{selected.status}</Badge></div>
-        <div className={styles.detailGrid}>
-          <div><span>Company/PT</span><b>{selected.companyCode}</b></div><div><span>Facilitator</span><b>{selected.facilitator}</b></div>
-          <div><span>Materi</span><b>{selected.materialId?`${selected.materialId}. ${selected.materialTitle}`:(selected.materialTitle||'-')}</b><small>{selected.materialRef||'-'}</small></div>
-          <div><span>Topic</span><b>{selected.topic||'-'}</b></div>
-          <div><span>Quiz</span><b>{selected.quizRequired?`Required • Pass ${selected.passingScore}`:'Not required'}</b></div><div><span>Acknowledgement</span><b>{selected.acknowledgementRequired?'Required':'Optional'}</b></div>
-          <div><span>GPS Location</span><b>{hasGps?`${coord(selected.latitude)}, ${coord(selected.longitude)}`:'Belum diambil'}</b>{hasGps&&<small>Akurasi ±{Math.round(Number(selected.gpsAccuracyM||0))} m</small>}</div>
-          <div><span>Foto Kegiatan</span><b>{selected.photoName||'Belum ada foto'}</b><small>{selected.photoCapturedAt?new Date(selected.photoCapturedAt).toLocaleString('id-ID'):'-'}</small></div>
-        </div>
-        {(hasGps||selected.photoPath)&&<div className={styles.evidenceRow}>
-          {hasGps&&<a className={styles.evidenceLink} href={`https://www.google.com/maps?q=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer"><MapPin size={16}/><div><b>Lihat Lokasi GPS</b><small>{coord(selected.latitude)}, {coord(selected.longitude)}</small></div><ExternalLink size={14}/></a>}
-          {selected.photoPath&&<a className={styles.photoEvidence} href={selectedPhotoUrl||'#'} target={selectedPhotoUrl?'_blank':undefined} rel="noreferrer" onClick={e=>{if(!selectedPhotoUrl)e.preventDefault()}}>{selectedPhotoUrl?<img src={selectedPhotoUrl} alt={`Foto kegiatan ${selected.id}`}/>:<Camera size={24}/>}<div><b>Foto Kegiatan</b><small>{selectedPhotoUrl?'Klik untuk membuka foto':'Menyiapkan secure preview…'}</small></div></a>}
-        </div>}
-        <div className={styles.tokenCard}><QrCode size={28}/><div><span>Check-in Token</span><b>{selected.qrToken||'-'}</b><small>Token unik ini menjadi dasar check-in/QR attendance tanpa mengirim data ke layanan QR eksternal.</small></div><button onClick={copyToken}><Copy size={15}/> Copy</button></div>
-        <div className={styles.sessionButtons}>
-          {selected.status==='Scheduled'&&<button className={styles.startButton} onClick={()=>setStatus('In Progress')}><PlayCircle size={16}/> Start Session</button>}
-          {selected.status==='In Progress'&&<button className={styles.completeButton} onClick={completeSession}><CheckCircle2 size={16}/> Complete Session</button>}
-          {!['Completed','Cancelled'].includes(selected.status)&&<button className={styles.cancelButton} onClick={()=>setStatus('Cancelled')}><X size={16}/> Cancel</button>}
-        </div>
+      <Panel title={presenterOpen?'Presenter Mode':'Session Detail'} action={selected.id}>
+        {presenterOpen?<>
+          <div className={presenter.presenterToolbar}>
+            <div><span>Materi yang sedang disampaikan</span><b>{activePresenterMaterial?.id}. {activePresenterMaterial?.title||selected.materialTitle||'-'}</b><small>{activePresenterMaterial?.code||selected.materialRef||''}</small></div>
+            <div className={presenter.presenterActions}>
+              <button className={presenter.backButton} onClick={()=>setPresenterOpen(false)}><ChevronLeft size={15}/> Detail Session</button>
+              {presenterUrl&&<a className={presenter.fullscreenLink} href={presenterUrl} target="_blank" rel="noreferrer"><Maximize2 size={15}/> Layar Penuh</a>}
+            </div>
+          </div>
+          <MaterialStage material={activePresenterMaterial} url={presenterUrl} loading={materialLoadingId===activePresenterMaterial?.id} missing={materialMissing[activePresenterMaterial?.id]} onImport={importMaterialZip} importing={zipImporting}/>
+          <div className={presenter.materialCaption}><div><b>Gunakan poster ini saat menyampaikan briefing.</b><small>Attendance, acknowledgement dan quiz tetap dapat diisi pada panel di sebelah kanan tanpa menutup materi.</small></div></div>
+        </>:<>
+          <div className={styles.detailTop}><div><Badge tone={typeTone(selected.type)}>{selected.type}</Badge><h3>{selected.title}</h3><p>{fmt(selected.date)} • {selected.startTime||'-'}{selected.endTime?`–${selected.endTime}`:''} • {selected.unit} / {selected.location}</p></div><Badge tone={statusTone(selected.status)}>{selected.status}</Badge></div>
+          <div className={styles.detailGrid}>
+            <div><span>Company/PT</span><b>{selected.companyCode}</b></div><div><span>Facilitator</span><b>{selected.facilitator}</b></div>
+            <div><span>Materi</span><b>{selected.materialId?`${selected.materialId}. ${selected.materialTitle}`:(selected.materialTitle||'-')}</b><small>{selected.materialRef||'-'}</small></div>
+            <div><span>Topic</span><b>{selected.topic||'-'}</b></div>
+            <div><span>Quiz</span><b>{selected.quizRequired?`Required • Pass ${selected.passingScore}`:'Not required'}</b></div><div><span>Acknowledgement</span><b>{selected.acknowledgementRequired?'Required':'Optional'}</b></div>
+            <div><span>GPS Location</span><b>{hasGps?`${coord(selected.latitude)}, ${coord(selected.longitude)}`:'Belum diambil'}</b>{hasGps&&<small>Akurasi ±{Math.round(Number(selected.gpsAccuracyM||0))} m</small>}</div>
+            <div><span>Foto Kegiatan</span><b>{selected.photoName||'Belum ada foto'}</b><small>{selected.photoCapturedAt?new Date(selected.photoCapturedAt).toLocaleString('id-ID'):'-'}</small></div>
+          </div>
+          {selected.materialId&&<div className={presenter.sessionMaterialButton}><button onClick={openPresenter}><BookOpen size={16}/> Buka Materi / Presenter Mode</button></div>}
+          {(hasGps||selected.photoPath)&&<div className={styles.evidenceRow}>
+            {hasGps&&<a className={styles.evidenceLink} href={`https://www.google.com/maps?q=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer"><MapPin size={16}/><div><b>Lihat Lokasi GPS</b><small>{coord(selected.latitude)}, {coord(selected.longitude)}</small></div><ExternalLink size={14}/></a>}
+            {selected.photoPath&&<a className={styles.photoEvidence} href={selectedPhotoUrl||'#'} target={selectedPhotoUrl?'_blank':undefined} rel="noreferrer" onClick={e=>{if(!selectedPhotoUrl)e.preventDefault()}}>{selectedPhotoUrl?<img src={selectedPhotoUrl} alt={`Foto kegiatan ${selected.id}`}/>:<Camera size={24}/>}<div><b>Foto Kegiatan</b><small>{selectedPhotoUrl?'Klik untuk membuka foto':'Menyiapkan secure preview…'}</small></div></a>}
+          </div>}
+          <div className={styles.tokenCard}><QrCode size={28}/><div><span>Check-in Token</span><b>{selected.qrToken||'-'}</b><small>Token unik ini menjadi dasar check-in/QR attendance tanpa mengirim data ke layanan QR eksternal.</small></div><button onClick={copyToken}><Copy size={15}/> Copy</button></div>
+          <div className={styles.sessionButtons}>
+            {selected.status==='Scheduled'&&<button className={styles.startButton} onClick={()=>setStatus('In Progress')}><PlayCircle size={16}/> Start Session</button>}
+            {selected.status==='In Progress'&&<button className={styles.completeButton} onClick={completeSession}><CheckCircle2 size={16}/> Complete Session</button>}
+            {!['Completed','Cancelled'].includes(selected.status)&&<button className={styles.cancelButton} onClick={()=>setStatus('Cancelled')}><X size={16}/> Cancel</button>}
+          </div>
+        </>}
       </Panel>
 
       <Panel title="Attendance & Completion" action={`${selectedReady}/${selectedPresent} ready`}>
@@ -396,22 +504,24 @@ export default function SafetyBriefing(){
       </Panel>
     </div>}
 
-    <div className={styles.info}><GraduationCap size={20}/><div><b>Terintegrasi dengan Learning & Competency</b><span>Safety Induction yang Completed akan otomatis membuat training record bagi peserta yang hadir dan memenuhi acknowledgement/quiz requirement. Material, koordinat GPS dan dokumentasi foto tetap terhubung ke session.</span></div></div>
+    <div className={styles.info}><GraduationCap size={20}/><div><b>Terintegrasi dengan Learning & Competency</b><span>Safety Induction yang Completed akan otomatis membuat training record bagi peserta yang hadir dan memenuhi acknowledgement/quiz requirement. Materi, koordinat GPS dan dokumentasi foto tetap terhubung ke session.</span></div></div>
 
-    {sessionModal&&<div className={styles.modalBackdrop} onMouseDown={e=>{if(e.target===e.currentTarget&&!sessionSaving)setSessionModal(false)}}><form className={styles.modal} onSubmit={saveSession}>
-      <div className={styles.modalHead}><div><span>SINSHE 2.0</span><h2>Buat Safety Session</h2><p>Pilih materi terlebih dahulu, kemudian lengkapi form session dan evidence lapangan.</p></div><button type="button" disabled={sessionSaving} onClick={()=>setSessionModal(false)}><X size={18}/></button></div>
+    {sessionModal&&<div className={styles.modalBackdrop} onMouseDown={e=>{if(e.target===e.currentTarget&&!sessionSaving&&!zipImporting)setSessionModal(false)}}><form className={styles.modal} onSubmit={saveSession}>
+      <div className={styles.modalHead}><div><span>SINSHE 2.0</span><h2>Buat Safety Session</h2><p>Pilih materi terlebih dahulu, kemudian lengkapi form session dan evidence lapangan.</p></div><button type="button" disabled={sessionSaving||zipImporting} onClick={()=>setSessionModal(false)}><X size={18}/></button></div>
       <div className={styles.wizardSteps}><div className={sessionStep==='material'?styles.wizardActive:styles.wizardDone}><span>1</span><b>Pilih Materi</b></div><ChevronRight size={16}/><div className={sessionStep==='form'?styles.wizardActive:''}><span>2</span><b>Form Session</b></div></div>
 
       {sessionStep==='material'&&<>
+        <div className={presenter.pickerTopActions}><p>41 materi KPN Plantations. Poster asli dapat dibuka sebelum dipilih maupun saat session berlangsung.</p><label className={`${presenter.importButton} ${presenter.zipImport}`}><UploadCloud size={15}/>{zipImporting?'Mengimport…':'Import ZIP Materi'}<input type="file" accept=".zip,application/zip" disabled={zipImporting} onChange={importMaterialZip}/></label></div>
+        {zipImporting&&zipProgress.total>0&&<div className={presenter.importProgress}><b>Import materi ke central storage</b><span>{zipProgress.label}</span><div className={presenter.importTrack}><i style={{width:`${Math.round(zipProgress.done/zipProgress.total*100)}%`}}/></div></div>}
         <div className={styles.materialToolbar}><label><Search size={16}/><input value={materialSearch} onChange={e=>setMaterialSearch(e.target.value)} placeholder="Cari 41 materi Safety Briefing..."/></label><select value={materialCategory} onChange={e=>setMaterialCategory(e.target.value)}>{SAFETY_MATERIAL_CATEGORIES.map(v=><option key={v}>{v}</option>)}</select></div>
         <div className={styles.materialGrid}>{filteredMaterials.map(material=><button type="button" key={material.id} className={`${styles.materialCard} ${sessionForm.materialId===material.id?styles.materialCardActive:''}`} onClick={()=>selectMaterial(material)}><span className={styles.materialNo}>{String(material.id).padStart(2,'0')}</span><div><b>{material.title}</b><small>{material.category}</small><em>{material.code}</em></div>{sessionForm.materialId===material.id&&<CheckCircle2 size={18}/>}</button>)}</div>
         {!filteredMaterials.length&&<div className={styles.materialEmpty}>Materi tidak ditemukan.</div>}
-        {chosenMaterial&&<div className={styles.chosenMaterial}><BookOpen size={20}/><div><span>Materi dipilih</span><b>{chosenMaterial.id}. {chosenMaterial.title}</b><small>{chosenMaterial.code} • {chosenMaterial.category}</small></div></div>}
-        <div className={styles.modalActions}><button type="button" className={styles.secondary} onClick={()=>setSessionModal(false)}>Batal</button><button type="button" className={styles.primary} disabled={!chosenMaterial} onClick={()=>setSessionStep('form')}>Lanjut ke Form <ChevronRight size={16}/></button></div>
+        {chosenMaterial&&<div className={styles.chosenMaterial}><BookOpen size={20}/><div><span>Materi dipilih</span><b>{chosenMaterial.id}. {chosenMaterial.title}</b><small>{chosenMaterial.code} • {chosenMaterial.category}</small></div><button type="button" className={presenter.previewButton} onClick={()=>openMaterialPreview(chosenMaterial.id)}><BookOpen size={14}/> Buka Materi</button></div>}
+        <div className={styles.modalActions}><button type="button" className={styles.secondary} onClick={()=>setSessionModal(false)}>Batal</button><button type="button" className={styles.primary} disabled={!chosenMaterial||zipImporting} onClick={()=>setSessionStep('form')}>Lanjut ke Form <ChevronRight size={16}/></button></div>
       </>}
 
       {sessionStep==='form'&&<>
-        <div className={styles.formMaterialBanner}><BookOpen size={20}/><div><span>Materi Safety Briefing</span><b>{chosenMaterial?.id}. {chosenMaterial?.title}</b><small>{chosenMaterial?.code} • {chosenMaterial?.category}</small></div><button type="button" onClick={()=>setSessionStep('material')}>Ganti Materi</button></div>
+        <div className={styles.formMaterialBanner}><BookOpen size={20}/><div><span>Materi Safety Briefing</span><b>{chosenMaterial?.id}. {chosenMaterial?.title}</b><small>{chosenMaterial?.code} • {chosenMaterial?.category}</small></div><div className={presenter.presenterActions}><button type="button" onClick={()=>openMaterialPreview(chosenMaterial?.id)}>Buka Materi</button><button type="button" onClick={()=>setSessionStep('material')}>Ganti Materi</button></div></div>
         <div className={styles.formGrid}>
           <Field label="Company / PT"><select value={sessionForm.companyCode} onChange={e=>updateSessionForm('companyCode',e.target.value)}>{COMPANY_MASTER.map(c=><option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}</select></Field>
           <Field label="Session Type"><select value={sessionForm.type} onChange={e=>updateSessionForm('type',e.target.value)}>{sessionTypes.map(v=><option key={v}>{v}</option>)}</select></Field>
@@ -443,7 +553,18 @@ export default function SafetyBriefing(){
         <div className={styles.modalActions}><button type="button" className={styles.secondary} disabled={sessionSaving} onClick={()=>setSessionStep('material')}><ChevronLeft size={16}/> Kembali</button><button className={styles.primary} disabled={sessionSaving}>{sessionSaving?'Menyimpan…':'Simpan Session'}</button></div>
       </>}
     </form></div>}
+
+    {previewMaterial&&<div className={presenter.materialPreviewBackdrop} onMouseDown={e=>{if(e.target===e.currentTarget)setPreviewMaterialId(null)}}><div className={presenter.materialPreviewModal}>
+      <div className={presenter.previewHead}><div><b>{previewMaterial.id}. {previewMaterial.title}</b><small>{previewMaterial.code} • {previewMaterial.category}</small></div><div className={presenter.presenterActions}>{previewUrl&&<a className={presenter.fullscreenLink} href={previewUrl} target="_blank" rel="noreferrer"><Maximize2 size={14}/> Layar Penuh</a>}<button onClick={()=>setPreviewMaterialId(null)}><X size={17}/></button></div></div>
+      <div className={presenter.previewBody}><MaterialStage material={previewMaterial} url={previewUrl} loading={materialLoadingId===previewMaterial.id} missing={materialMissing[previewMaterial.id]} onImport={importMaterialZip} importing={zipImporting}/></div>
+    </div></div>}
   </Shell>
+}
+
+function MaterialStage({material,url,loading,missing,onImport,importing}){
+  if(loading)return <div className={presenter.materialLoading}><BookOpen size={30}/><b>Menyiapkan materi…</b><span>Membuka poster asli dari central storage SINSHE.</span></div>
+  if(url)return <div className={presenter.materialStage}><img src={url} alt={`Materi Safety Briefing ${material?.id||''} ${material?.title||''}`}/></div>
+  return <div className={presenter.materialMissing}><UploadCloud size={30}/><b>{missing?'Poster materi belum ada di central storage.':'Materi belum dimuat.'}</b><span>Import ZIP materi KPN Plantations satu kali. Setelah itu poster asli dapat dibuka oleh seluruh user saat briefing.</span><label className={`${presenter.importButton} ${presenter.zipImport}`}><UploadCloud size={15}/>{importing?'Mengimport…':'Import ZIP Materi'}<input type="file" accept=".zip,application/zip" disabled={importing} onChange={onImport}/></label></div>
 }
 
 function Field({label,children,wide=false}){ return <label className={wide?styles.fieldWide:styles.field}><span>{label}</span>{children}</label> }
