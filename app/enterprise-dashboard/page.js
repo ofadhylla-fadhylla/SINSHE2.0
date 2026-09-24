@@ -73,7 +73,7 @@ export default function EnterpriseDashboard(){
  }),[scopedReadiness])
 
  return <Shell title="Enterprise Dashboard" subtitle="Pilih Executive atau Operational View untuk membuka dashboard.">
-  <CompanyScopeBar filters={filters} onChange={setFilters} onReset={()=>setFilters(DEFAULT_COMPANY_FILTERS)}/>
+  <CompanyScopeBar filters={filters} onChange={setFilters} companyOnly/>
 
   <section className={styles.selectorPanel}>
    <div className={styles.selectorIntro}>
