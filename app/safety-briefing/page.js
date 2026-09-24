@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { unzipSync } from 'fflate'
 import Shell from '../../components/Shell'
 import CompanyScopeBar from '../../components/CompanyScopeBar'
 import { Badge, Panel, Progress, StatCard } from '../../components/Ui'
@@ -53,6 +52,46 @@ function zipMaterialId(path){
   if(!match)return null
   const id=Number(match[1])
   return id>=1&&id<=41?id:null
+}
+function findZipEocd(view){
+  const min=Math.max(0,view.byteLength-65557)
+  for(let i=view.byteLength-22;i>=min;i--){ if(view.getUint32(i,true)===0x06054b50)return i }
+  return -1
+}
+function parseZipDirectory(buffer){
+  const view=new DataView(buffer)
+  const eocd=findZipEocd(view)
+  if(eocd<0)throw new Error('Format ZIP tidak dikenali.')
+  const total=view.getUint16(eocd+10,true)
+  let offset=view.getUint32(eocd+16,true)
+  const decoder=new TextDecoder('utf-8')
+  const entries=[]
+  for(let i=0;i<total;i++){
+    if(view.getUint32(offset,true)!==0x02014b50)throw new Error('Central directory ZIP tidak valid.')
+    const method=view.getUint16(offset+10,true)
+    const compressedSize=view.getUint32(offset+20,true)
+    const fileNameLength=view.getUint16(offset+28,true)
+    const extraLength=view.getUint16(offset+30,true)
+    const commentLength=view.getUint16(offset+32,true)
+    const localOffset=view.getUint32(offset+42,true)
+    const nameBytes=new Uint8Array(buffer,offset+46,fileNameLength)
+    const path=decoder.decode(nameBytes)
+    if(view.getUint32(localOffset,true)!==0x04034b50)throw new Error('Local header ZIP tidak valid.')
+    const localNameLength=view.getUint16(localOffset+26,true)
+    const localExtraLength=view.getUint16(localOffset+28,true)
+    const dataOffset=localOffset+30+localNameLength+localExtraLength
+    const compressed=new Uint8Array(buffer,dataOffset,compressedSize)
+    entries.push({path,method,compressed})
+    offset+=46+fileNameLength+extraLength+commentLength
+  }
+  return entries
+}
+async function unzipEntry(entry){
+  if(entry.method===0)return new Uint8Array(entry.compressed)
+  if(entry.method!==8)throw new Error(`Compression method ${entry.method} belum didukung.`)
+  if(typeof DecompressionStream==='undefined')throw new Error('Browser belum mendukung ekstraksi ZIP. Gunakan Chrome/Edge versi terbaru.')
+  const stream=new Blob([entry.compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
 function sessionFromDb(r){ return {
@@ -251,18 +290,18 @@ export default function SafetyBriefing(){
     setZipImporting(true)
     setZipProgress({done:0,total:0,label:'Membaca ZIP…'})
     try{
-      const bytes=new Uint8Array(await file.arrayBuffer())
-      const archive=unzipSync(bytes)
-      const materials=Object.entries(archive).map(([path,data])=>({path,data,id:zipMaterialId(path)})).filter(item=>item.id&&item.data?.length)
+      const buffer=await file.arrayBuffer()
+      const parsed=parseZipDirectory(buffer)
       const unique=new Map()
-      materials.forEach(item=>{ if(!unique.has(item.id))unique.set(item.id,item) })
+      parsed.forEach(entry=>{ const id=zipMaterialId(entry.path); if(id&&!unique.has(id))unique.set(id,{...entry,id}) })
       const rows=[...unique.values()].sort((a,b)=>a.id-b.id)
       if(!rows.length)throw new Error('Tidak ditemukan file materi bernomor 1–41 di dalam ZIP.')
       setZipProgress({done:0,total:rows.length,label:`0/${rows.length} materi`})
       let done=0
       const importedIds=[]
       for(const item of rows){
-        const blob=new Blob([item.data],{type:'image/png'})
+        const bytes=await unzipEntry(item)
+        const blob=new Blob([bytes],{type:'image/png'})
         await storageUpload(EVIDENCE_BUCKET,safetyMaterialStoragePath(item.id),blob,{upsert:true})
         done+=1; importedIds.push(item.id)
         setZipProgress({done,total:rows.length,label:`${done}/${rows.length} materi`})
