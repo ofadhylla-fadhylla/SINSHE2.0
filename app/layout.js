@@ -16,7 +16,10 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body>
+        {children}
+        <script src="/safety-material-direct.js" defer />
+      </body>
     </html>
   )
 }
